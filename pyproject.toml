@@ -1,0 +1,28 @@
+[project]
+name = "sc4020-project-2"
+version = "0.1.0"
+authors = [
+    { name = "Qian Jianheng Oscar", email = "qian0081@e.ntu.edu.sg" },
+    { name = "Cheng Yao Lee", email = "d220007@e.ntu.edu.sg" },
+    { name = "Zane Sun Yee", email = "zane0001@e.ntu.edu.sg" },
+    { name = "Iain Roderick Rong Yu Tay", email = "iain0001@e.ntu.edu.sg" },
+]
+description = "sc4020-project-2"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas",
+    "matplotlib",
+    "scikit-learn",
+    "seaborn",
+    "prefixspan-py"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
