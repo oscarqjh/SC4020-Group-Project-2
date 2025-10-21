@@ -26,3 +26,18 @@ dev = [
 [build-system]
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+exclude = [
+  "notebooks*",
+  "datasets*",
+  "output*"
+]
+
+[tool.wheel]
+exclude = [
+  "notebooks*",
+  "datasets*",
+  "output*"
+]
