@@ -1,0 +1,27 @@
+Cancer Sequential Pattern Mining Analysis Summary
+==================================================
+
+Total sequences: 569
+Malignant cases: 212
+Benign cases: 357
+Unique malignant patterns: 10
+Unique benign patterns: 10
+Discriminative patterns: 3
+
+Top Discriminative Patterns:
+------------------------------
+1. {perimeter_worst_medium}
+   Discriminative for: benign
+   Malignant support: 0.151
+   Benign support: 0.440
+
+2. {area_worst_medium}
+   Discriminative for: benign
+   Malignant support: 0.156
+   Benign support: 0.437
+
+3. {concave points_mean_medium}
+   Discriminative for: benign
+   Malignant support: 0.175
+   Benign support: 0.426
+

@@ -1,0 +1,14 @@
+Feature Importance Analysis
+==============================
+
+Top Features in Malignant Patterns:
+  concave points: 7.759
+  perimeter: 4.090
+  area: 4.080
+  radius: 3.953
+
+Top Features in Benign Patterns:
+  concave points: 9.020
+  radius: 4.667
+  area: 4.633
+  perimeter: 4.599
