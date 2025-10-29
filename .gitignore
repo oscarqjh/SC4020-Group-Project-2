@@ -1,7 +1,15 @@
-venv
-.DS_Store
-.venv/
-.pyc
-pycache__/
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.egg-info/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv
+venv
+ENV
+env
+.env
+
+# Outputs - Ignore large generated data files
+outputs/association_rules.csv
+outputs/frequent_itemsets.csv

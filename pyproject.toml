@@ -15,7 +15,11 @@ dependencies = [
     "matplotlib",
     "scikit-learn",
     "seaborn",
-    "prefixspan"
+    "prefixspan",
+    "mlxtend",
+    "nltk",
+    "tqdm",
+    "ipykernel"
 ]
 
 [project.optional-dependencies]

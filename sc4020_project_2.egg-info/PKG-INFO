@@ -1,3 +1,21 @@
+Metadata-Version: 2.4
+Name: sc4020-project-2
+Version: 0.1.0
+Summary: sc4020-project-2
+Author-email: Qian Jianheng Oscar <qian0081@e.ntu.edu.sg>, Cheng Yao Lee <d220007@e.ntu.edu.sg>, Zane Sun Yee <zane0001@e.ntu.edu.sg>, Iain Roderick Rong Yu Tay <iain0001@e.ntu.edu.sg>
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pandas
+Requires-Dist: matplotlib
+Requires-Dist: scikit-learn
+Requires-Dist: seaborn
+Requires-Dist: prefixspan
+Requires-Dist: mlxtend
+Requires-Dist: nltk
+Requires-Dist: tqdm
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+
 # SC4020-Group-Project-2
 
 NTU SC4020 Data Analytics & Mining AY25 Group Project 2
@@ -11,8 +29,8 @@ This project implements comprehensive healthcare data analytics solutions using 
 ### Create and Activate Environment
 
 ```bash
-# Create the virtual environment using Python's built-in venv module
-python3 -m venv .venv
+# Create the virtual environment
+uv venv -p 3.11
 
 # Activate the environment
 
@@ -20,17 +38,17 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # On Windows (Command Prompt)
-.venv\\Scripts\\activate.bat
+.venv\Scripts\activate.bat
 
 # On Windows (PowerShell)
-.venv\\Scripts\\Activate.ps1
+.venv\Scripts\Activate.ps1
 ```
 
 ### Install Dependencies
 
 ```bash
-# Install the project in development mode using pip
-python3 -m pip install -e .
+# Install the project in development mode
+uv pip install -e .
 
 # Verify installation (Task 2)
 python scripts/cancer_pattern_mining.py --help
@@ -43,17 +61,15 @@ SC4020-Group-Project-2/
 ├── README.md                    # This overview file
 ├── docs/                        # Comprehensive documentation
 │   ├── README.md               # Documentation navigation
-│   ├── symptom_analysis.md     # Task 1 complete guide
 │   ├── cancer_pattern_mining.md # Task 2 complete guide
 │   ├── processors.md           # Data processing components
 │   └── analysis.md             # Analysis and mining algorithms
-├── src/                         # Source code (Task 1 & 2 implemented)
+├── src/                         # Source code (Task 2 implemented)
 │   ├── processors/             # Data preprocessing pipeline
 │   └── analysis/               # Pattern mining and evaluation
 ├── scripts/                     # Executable scripts
-│   ├── symptom_analysis.py     # Task 1 CLI tool
 │   └── cancer_pattern_mining.py # Task 2 CLI tool
-├── data/                        # Data storage
+├── datasets/                    # Data storage
 │   ├── dataset.csv             # Symptom data (Task 1)
 │   └── raw/
 │       └── wisconsin_breast_cancer.csv # Cancer data (Task 2)

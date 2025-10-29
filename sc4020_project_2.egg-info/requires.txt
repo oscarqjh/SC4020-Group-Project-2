@@ -1,0 +1,11 @@
+pandas
+matplotlib
+scikit-learn
+seaborn
+prefixspan
+mlxtend
+nltk
+tqdm
+
+[dev]
+pytest
