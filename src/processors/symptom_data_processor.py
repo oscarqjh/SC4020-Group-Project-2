@@ -25,7 +25,7 @@ class SymptomDataProcessor:
         """Downloads NLTK 'wordnet' if not already present."""
         try:
             wordnet.synsets('test')
-        except nltk.downloader.DownloadError:
+        except Exception:
             nltk.download('wordnet')
 
     def _clean_symptom(self, symptom):
