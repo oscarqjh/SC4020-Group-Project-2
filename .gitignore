@@ -9,6 +9,7 @@ venv
 ENV
 env
 .env
+.DS_Store
 
 # Outputs - Ignore large generated data files
 outputs/association_rules.csv
