@@ -28,13 +28,23 @@ source .venv/bin/activate
 
 ### Install Dependencies
 
+**Important:** For this project, `requirements.txt` is the **authoritative dependency specification**. Use it for all environment setup.
+
 ```bash
 # Install the project in development mode using pip
 python3 -m pip install -e .
 
+# Install all dependencies from requirements.txt
+python3 -m pip install -r requirements.txt
+
+# Note: pip install -e . is NOT recommended as pyproject.toml dependencies 
+# may be outdated compared to requirements.txt specifications
+
 # Verify installation (Task 2)
 python scripts/cancer_pattern_mining.py --help
 ```
+
+**Rationale:** `requirements.txt` contains the complete, verified, and secure dependency specifications for all phases of the project. `pyproject.toml` serves only as a minimal package configuration for development workflows and should not be used as the source of truth for dependency management.
 
 ## Project Structure
 
