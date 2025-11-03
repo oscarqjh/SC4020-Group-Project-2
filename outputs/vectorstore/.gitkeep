@@ -1,0 +1,2 @@
+# This directory stores the ChromaDB vector database for the symptom checker
+# Vectorstore will be populated in Phase 2 of the implementation plan
