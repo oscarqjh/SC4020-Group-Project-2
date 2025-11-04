@@ -19,6 +19,49 @@ class SymptomDataProcessor:
         self.data_path = data_path
         self.df = None
         self.transactions = []
+        self.symptom_mapping = {
+            # --- Abdominal / Stomach ---
+            'belly pain': 'abdominal pain',
+            'stomach pain': 'abdominal pain',
+            'swelling of stomach': 'distention of abdomen',
+
+            # --- Pain & Discomfort ---
+            'burning micturition': 'painful urination',
+            'irritation in anus': 'anal discomfort',
+            'pain in anal region': 'anal discomfort',
+            # 'hip joint pain': 'joint pain',
+            # 'knee pain': 'joint pain',
+
+            # --- General Symptoms ---
+            'lethargy': 'fatigue',
+            'malaise': 'fatigue',
+            'spinning movements': 'dizziness',
+            'loss of balance': 'unsteadiness',
+            'palpitation': 'fast heart rate',
+            'perspiration': 'sweating',
+            'chill': 'chills',
+            'vomit': 'vomiting',
+            'nausea': 'vomiting',
+
+            # --- Skin ---
+            'itch': 'itching',
+            'internal itching': 'itching',
+
+            # --- Swelling ---
+            'swollen extremeties': 'swollen extremities',
+            'swollen legs': 'swollen extremities',
+
+            # --- Other Groups ---
+            'excessive hunger': 'increased appetite',
+            'weakness in limbs': 'muscle weakness',
+
+            # --- Spelling/Typo Corrections ---
+            'cold hands and feets': 'cold hands and feet',
+            'dischromic  patches': 'dischromic patches',
+            'scurring': 'skin scaling',  # Assumed typo of 'scurfing' or 'scaling'
+            'spotting  urination': 'spotting during urination',
+            'toxic look (typhos)': 'toxic look (typhus)'
+        }
         self._download_nltk_data()
 
     def _download_nltk_data(self):
@@ -44,7 +87,8 @@ class SymptomDataProcessor:
 
     def _normalize_symptom(self, symptom):
         """
-        Normalizes a symptom to its canonical form using WordNet.
+        Normalizes a symptom to its canonical form.
+        First checks the symptom mapping dictionary, then falls back to WordNet.
         If a canonical form is not found, the original cleaned symptom is returned.
 
         Args:
@@ -53,6 +97,12 @@ class SymptomDataProcessor:
         Returns:
             str: The normalized (canonical) symptom string.
         """
+        # First check the mapping dictionary (case-insensitive)
+        symptom_lower = symptom.lower()
+        if symptom_lower in self.symptom_mapping:
+            return self.symptom_mapping[symptom_lower]
+        
+        # If not in specified dict, use WordNet
         synsets = wordnet.synsets(symptom)
         if synsets:
             # Use the first lemma of the first synset as the canonical form
