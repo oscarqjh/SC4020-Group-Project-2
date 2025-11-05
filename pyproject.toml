@@ -19,7 +19,9 @@ dependencies = [
     "mlxtend",
     "nltk",
     "tqdm",
-    "ipykernel"
+    "ipykernel",
+    "crewai",
+    "crewai-tools"
 ]
 
 [project.optional-dependencies]
