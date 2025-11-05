@@ -102,19 +102,24 @@ class SymptomDataProcessor:
         if symptom_lower in self.symptom_mapping:
             return self.symptom_mapping[symptom_lower]
         
-        # If not in specified dict, use WordNet
-        synsets = wordnet.synsets(symptom)
-        if synsets:
-            # Use the first lemma of the first synset as the canonical form
-            return synsets[0].lemmas()[0].name().replace('_', ' ')
+        # # If not in specified dict, use WordNet
+        # synsets = wordnet.synsets(symptom)
+        # if synsets:
+        #     # Use the first lemma of the first synset as the canonical form
+        #     return synsets[0].lemmas()[0].name().replace('_', ' ')
         return symptom
 
-    def process_data(self):
+    def process_data(self, group_by_disease=True, min_transactions=10):
         """
         Executes the full data processing pipeline:
         1. Loads the data.
         2. Cleans and normalizes symptoms.
         3. Transforms the data into a transactional list.
+
+        Args:
+            group_by_disease (bool): If True, groups symptoms by disease (each disease is a basket).
+                                   If False, each row is a transaction.
+            min_transactions (int): Minimum number of transactions required. Raises warning if below.
 
         Returns:
             list: A list of lists, where each inner list contains the symptoms for a transaction.
@@ -122,18 +127,50 @@ class SymptomDataProcessor:
         self.df = pd.read_csv(self.data_path)
         
         symptom_cols = [col for col in self.df.columns if 'Symptom' in col]
+        disease_col = 'Disease' if 'Disease' in self.df.columns else None
         
-        transactions = []
-        # Wrap the DataFrame iterator with tqdm for a progress bar
-        for index, row in tqdm(self.df.iterrows(), total=self.df.shape[0], desc="Processing symptoms"):
-            transaction = []
-            for col in symptom_cols:
-                symptom = self._clean_symptom(row[col])
-                if symptom:
-                    normalized_symptom = self._normalize_symptom(symptom)
-                    transaction.append(normalized_symptom)
-            if transaction:
-                transactions.append(transaction)
+        if group_by_disease and disease_col:
+            # Group by disease: each disease becomes a basket with all unique symptoms
+            transactions = []
+            disease_symptoms = {}
+            
+            for index, row in tqdm(self.df.iterrows(), total=self.df.shape[0], desc="Processing symptoms"):
+                disease = row[disease_col] if pd.notna(row[disease_col]) else None
+                if disease:
+                    if disease not in disease_symptoms:
+                        disease_symptoms[disease] = set()
+                    
+                    for col in symptom_cols:
+                        symptom = self._clean_symptom(row[col])
+                        if symptom:
+                            normalized_symptom = self._normalize_symptom(symptom)
+                            disease_symptoms[disease].add(normalized_symptom)
+            
+            # Convert sets to lists for transactions
+            for disease, symptoms in disease_symptoms.items():
+                if symptoms:  # Only add if disease has symptoms
+                    transactions.append(list(symptoms))
+        else:
+            # Each row is a transaction (Not grouped by disease)
+            transactions = []
+            for index, row in tqdm(self.df.iterrows(), total=self.df.shape[0], desc="Processing symptoms"):
+                transaction = []
+                for col in symptom_cols:
+                    symptom = self._clean_symptom(row[col])
+                    if symptom:
+                        normalized_symptom = self._normalize_symptom(symptom)
+                        transaction.append(normalized_symptom)
+                if transaction:
+                    transactions.append(transaction)
+        
+        # Validate minimum transactions
+        if len(transactions) < min_transactions:
+            import warnings
+            warnings.warn(
+                f"Only {len(transactions)} transactions found. Minimum recommended: {min_transactions}. "
+                "Consider augmenting data or lowering min_support threshold.",
+                UserWarning
+            )
         
         self.transactions = transactions
         return self.transactions
