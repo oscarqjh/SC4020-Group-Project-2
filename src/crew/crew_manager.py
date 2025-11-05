@@ -8,6 +8,7 @@ from crewai import Crew, Task
 
 from .base import BaseCrew, BaseAgent
 from .agent import MedicalAnalysisAgent, create_medical_agent
+from .symptom_extractor import create_symptom_extractor
 
 
 class MedicalAnalysisCrew(BaseCrew):
@@ -33,6 +34,9 @@ class MedicalAnalysisCrew(BaseCrew):
         # Store the primary medical agent
         self.medical_agent = agents[0] if agents else create_medical_agent()
         
+        # Initialize the symptom extractor
+        self.symptom_extractor = create_symptom_extractor()
+        
         # Create CrewAI crew instance
         self.crew = Crew(
             agents=[agent.get_crew_agent() if hasattr(agent, 'get_crew_agent') else agent for agent in agents],
@@ -47,6 +51,7 @@ class MedicalAnalysisCrew(BaseCrew):
             print("Initializing Medical Analysis Crew...")
             print(f"Loaded {len(self.agents)} agent(s)")
             print(f"Medical agent ready with {len(self.medical_agent.tools)} tool(s)")
+            print("AI-powered symptom extraction system initialized")
             print("Medical Analysis System ready!")
             self.initialized = True
     

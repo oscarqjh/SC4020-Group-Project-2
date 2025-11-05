@@ -14,3 +14,6 @@ env
 # Outputs - Ignore large generated data files
 outputs/association_rules.csv
 outputs/frequent_itemsets.csv
+
+*.egg-info
+dist/
