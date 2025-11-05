@@ -28,6 +28,7 @@ import datetime
 import pickle
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
+from sklearn.metrics import make_scorer, f1_score
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -178,6 +179,11 @@ def parse_arguments():
         default=None,
         help='Custom model filename (if not provided, uses timestamped default)'
     )
+    parser.add_argument(
+        '--strict-venv',
+        action='store_true',
+        help='Exit with error if virtual environment is not activated'
+    )
     
     return parser.parse_args()
 
@@ -236,7 +242,7 @@ def create_config_from_args(args) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     return feature_selector_config, classifier_config
 
 
-def load_and_validate_data(data_path: str) -> Tuple[pd.DataFrame, pd.Series]:
+def load_and_validate_data(data_path: str) -> Tuple[pd.DataFrame, pd.Series, Optional[str]]:
     """
     Load dataset and perform validation.
     
@@ -244,7 +250,10 @@ def load_and_validate_data(data_path: str) -> Tuple[pd.DataFrame, pd.Series]:
         data_path: Path to the dataset CSV file
         
     Returns:
-        Tuple of (X, y) where X is features DataFrame and y is target Series
+        Tuple of (X, y, detected_positive) where:
+            - X: Features DataFrame
+            - y: Target Series
+            - detected_positive: Positive class label if 'M' not found (for scorer config), None otherwise
         
     Raises:
         FileNotFoundError: If dataset file is not found
@@ -286,13 +295,16 @@ def load_and_validate_data(data_path: str) -> Tuple[pd.DataFrame, pd.Series]:
                 f"Expected binary classification (2 classes), got {len(unique_classes)} classes: {unique_classes}"
             )
         
-        # Verify minimum sample size
-        if len(X) < 50:
-            raise ValueError(f"Dataset too small: {len(X)} samples. Need at least 50 samples")
-        
-        print("\nData validation passed!")
-        
-        return X, y
+        # Check that 'M' is among the labels for F1 scorer pos_label
+        if 'M' not in unique_classes:
+            detected_positive = unique_classes[0]  # Use first class as positive
+            print(f"\nWarning: 'M' (malignant) not found in labels. Detected classes: {unique_classes}")
+            print(f"Will use '{detected_positive}' as positive class for F1 scoring.")
+            print("Consider mapping labels to ['B', 'M'] before training for consistency.")
+            # Return detected positive class for scorer configuration
+            return X, y, detected_positive
+        else:
+            return X, y, None
         
     except FileNotFoundError:
         raise FileNotFoundError(f"Dataset file not found: {data_path}")
@@ -491,13 +503,10 @@ def save_model_and_results(classifier: RandomForestBinaryClassifier, selector: O
         model_path = output_path / model_filename
         saved_path = classifier.save_model(str(model_path))
     else:
-        saved_path = classifier.save_model()
-        # Extract filename from saved path
-        model_path = Path(saved_path)
-        if not model_path.is_absolute():
-            model_path = output_path / model_path.name
-        else:
-            model_path = Path(saved_path)
+        # Generate timestamped filename in output_dir
+        model_filename_timestamped = f'random_forest_model_{timestamp}.pkl'
+        model_path = output_path / model_filename_timestamped
+        saved_path = classifier.save_model(str(model_path))
     
     saved_files['model'] = str(model_path)
     print(f"\nModel saved to: {model_path}")
@@ -583,6 +592,34 @@ def main():
     # Parse command line arguments
     args = parse_arguments()
     
+    # Check if virtual environment is activated
+    in_venv = (
+        hasattr(sys, 'real_prefix') or
+        (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix) or
+        os.environ.get('VIRTUAL_ENV') is not None
+    )
+    
+    if not in_venv:
+        print("\n" + "="*60)
+        print("WARNING: Virtual environment not detected")
+        print("="*60)
+        print("\nIt is recommended to run this script within a virtual environment.")
+        print("\nTo activate the virtual environment:")
+        print("  # On macOS/Linux:")
+        print("  source .venv/bin/activate")
+        print("  # On Windows (Command Prompt):")
+        print("  .venv\\Scripts\\activate.bat")
+        print("  # On Windows (PowerShell):")
+        print("  .venv\\Scripts\\Activate.ps1")
+        print("\nIf you continue, dependencies may conflict with system Python.")
+        
+        if args.strict_venv:
+            print("\nExiting due to --strict-venv flag.")
+            return 1
+        
+        print("\nContinuing without virtual environment...")
+        print("-"*60)
+    
     # Convert relative paths to absolute paths
     project_root = Path(__file__).parent.parent
     data_path = project_root / args.data_path
@@ -622,7 +659,12 @@ def main():
             feature_selector_config['feature_importance_path'] = str(feature_importance_path)
         
         # Load and validate data
-        X, y = load_and_validate_data(str(data_path))
+        X, y, detected_positive = load_and_validate_data(str(data_path))
+        
+        # Configure scorer if 'M' label not found
+        if detected_positive is not None:
+            f1_m_scorer = make_scorer(f1_score, pos_label=detected_positive)
+            classifier_config['scoring'] = f1_m_scorer
         
         # Perform feature selection (if enabled)
         if args.use_feature_selection:

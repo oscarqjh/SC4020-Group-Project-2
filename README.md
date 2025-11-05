@@ -244,7 +244,7 @@ loaded_classifier = RandomForestBinaryClassifier.load_model(saved_path)
 
 ### Model Persistence
 
-Models are saved as pickle files with timestamped filenames. Default location: `/scripts/random_forest_model_YYYYMMDD_HHMMSS.pkl`. Custom paths can be specified in `save_model(filepath)`.
+Models are saved as pickle files with timestamped filenames. By default, both the model and results are saved under the directory specified by `--output-dir` (default: `scripts/`). The model file is saved as `random_forest_model_YYYYMMDD_HHMMSS.pkl` in the output directory. Custom paths can be specified via `--output-dir` or `--model-filename`.
 
 ### Class Imbalance Handling
 
@@ -283,7 +283,7 @@ This will:
 2. Select top 10 features based on pattern mining results
 3. Train Random Forest with GridSearchCV (5-fold CV)
 4. Evaluate on test set (F1, Recall, Precision, ROC-AUC)
-5. Save model to `scripts/random_forest_model_YYYYMMDD_HHMMSS.pkl`
+5. Save model and results to the directory specified by `--output-dir` (default: `scripts/`)
 
 ### Key Features
 

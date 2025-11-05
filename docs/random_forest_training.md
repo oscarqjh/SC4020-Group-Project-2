@@ -38,6 +38,8 @@ Wisconsin Breast Cancer dataset at `data/raw/wisconsin_breast_cancer.csv`:
 
 ## Virtual Environment Setup
 
+The training script automatically checks if it's running within a virtual environment. If not, it will display a warning with activation instructions. You can use the `--strict-venv` flag to exit with an error if the virtual environment is not activated.
+
 ### Step 1: Create Virtual Environment
 
 Navigate to project root and create virtual environment:
@@ -114,7 +116,7 @@ This runs with default parameters:
 - Uses all 30 features (no feature selection)
 - GridSearchCV with default hyperparameter grid
 - 5-fold cross-validation
-- Saves model to `scripts/random_forest_model_YYYYMMDD_HHMMSS.pkl`
+- Saves model and results to the directory specified by `--output-dir` (default: `scripts/`)
 
 ### With Feature Selection
 
@@ -301,7 +303,9 @@ Example confusion matrix:
 
 ### Model File
 
-**Location**: `scripts/random_forest_model_YYYYMMDD_HHMMSS.pkl`
+**Location**: Saved in the directory specified by `--output-dir` (default: `scripts/random_forest_model_YYYYMMDD_HHMMSS.pkl`)
+
+By default, both the model and results are saved under the provided `--output-dir`. If no `--output-dir` is specified, files are saved to `scripts/` directory.
 
 **Content**: Entire RandomForestBinaryClassifier object including:
 - Trained Random Forest model
@@ -314,8 +318,10 @@ Example confusion matrix:
 ```python
 from src.classifiers import RandomForestBinaryClassifier
 
-# Load model
+# Load model (use the path from --output-dir)
 classifier = RandomForestBinaryClassifier.load_model('scripts/random_forest_model_20240101_120000.pkl')
+# Or if using custom output directory:
+# classifier = RandomForestBinaryClassifier.load_model('outputs/random_forest_model_20240101_120000.pkl')
 
 # Make predictions
 predictions = classifier.predict(X_new)
@@ -323,7 +329,7 @@ predictions = classifier.predict(X_new)
 
 ### Feature Selector File
 
-**Location**: `scripts/feature_selector_YYYYMMDD_HHMMSS.pkl`
+**Location**: Saved in the directory specified by `--output-dir` (default: `scripts/feature_selector_YYYYMMDD_HHMMSS.pkl`)
 
 **Content**: Fitted FeatureSelector object
 
@@ -341,7 +347,7 @@ X_selected = selector.transform(X_new)
 
 ### Results Summary File
 
-**Location**: `scripts/training_results_YYYYMMDD_HHMMSS.txt`
+**Location**: Saved in the directory specified by `--output-dir` (default: `scripts/training_results_YYYYMMDD_HHMMSS.txt`)
 
 **Content**: Text summary with:
 - Best hyperparameters
@@ -634,6 +640,8 @@ Model saved to: /Users/bytedance/GitHub/SC4020-Group-Project-2/scripts/random_fo
 Feature selector saved to: /Users/bytedance/GitHub/SC4020-Group-Project-2/scripts/feature_selector_20240101_120000.pkl
 Results summary saved to: /Users/bytedance/GitHub/SC4020-Group-Project-2/scripts/training_results_20240101_120000.txt
 
+Note: All files are saved under the `--output-dir` directory (default: `scripts/`). You can specify a custom output directory with `--output-dir`.
+
 ============================================================
 TRAINING COMPLETED SUCCESSFULLY
 ============================================================
@@ -643,6 +651,8 @@ Key Findings:
   Number of features used: 10
   Model saved to: /Users/bytedance/GitHub/SC4020-Group-Project-2/scripts/random_forest_model_20240101_120000.pkl
   Results saved to: /Users/bytedance/GitHub/SC4020-Group-Project-2/scripts/training_results_20240101_120000.txt
+
+Note: All output files are saved under the `--output-dir` directory specified (default: `scripts/`).
 ```
 
 ## References
