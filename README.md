@@ -119,255 +119,36 @@ python scripts/cancer_pattern_mining.py \
     --verbose
 ```
 
-### Task 3: Random Forest Classifier Training
+### Task 3: AI-Powered Medical Analysis System
+
+#### Interactive Mode
 
 ```bash
-# Basic training with default parameters
-python scripts/train_random_forest.py
-
-# Training with feature selection (recommended)
-python scripts/train_random_forest.py \
-    --use-feature-selection \
-    --top-n-features 10 \
-    --verbose
-
-# Advanced training with custom hyperparameters
-python scripts/train_random_forest.py \
-    --use-feature-selection \
-    --n-estimators 100 200 300 \
-    --max-depth 10 20 None \
-    --cv-folds 10 \
-    --verbose
+# Run in interactive mode with full CLI interface
+python app.py
 ```
 
-## Feature Selection Based on Pattern Mining
-
-The `FeatureSelector` class performs intelligent feature selection based on pattern mining results, automatically detecting and removing multicollinear features.
-
-### Key Capabilities
-
-- Parses feature importance scores from pattern mining analysis
-- Combines support values from both malignant and benign patterns
-- Detects multicollinearity using correlation analysis
-- Selects top-N most important features while avoiding redundancy
-
-### Usage Example
-
-```python
-from src.classifiers import FeatureSelector, load_cancer_data
-
-# Load data
-X, y = load_cancer_data('data/raw/wisconsin_breast_cancer.csv')
-
-# Create and fit selector
-selector = FeatureSelector({
-    'feature_importance_path': 'outputs/feature_importance.txt',
-    'top_n': 5,
-    'correlation_threshold': 0.9,
-    'aggregation_method': 'sum'
-})
-
-# Select features
-X_selected = selector.fit_transform(X, y)
-
-# View selected features
-print(selector.get_selected_features())
-# or use select_features() method
-print(selector.select_features())
-```
-
-### Configuration Parameters
-
-- `feature_importance_path`: Path to feature importance file (required)
-- `top_n`: Number of features to select (default: 10)
-- `correlation_threshold`: Threshold for multicollinearity detection (default: 0.9)
-- `aggregation_method`: How to combine scores - 'sum', 'mean', or 'max' (default: 'sum')
-
-### Note on Multicollinearity
-
-The selector automatically handles highly correlated features. For example, radius, perimeter, and area are mathematically related (area = π × radius², perimeter = 2π × radius). The selector keeps only the most important feature from each correlated group, preventing redundancy and improving model interpretability.
-
-## Random Forest Binary Classifier
-
-The `RandomForestBinaryClassifier` implements a Random Forest classifier with automatic hyperparameter tuning via GridSearchCV, specifically designed for binary classification of breast cancer diagnosis (Benign vs Malignant).
-
-### Key Features
-
-- Automatic hyperparameter tuning using GridSearchCV
-- Handles class imbalance with `class_weight='balanced'`
-- Comprehensive evaluation using F1 (primary), Recall, Precision, and ROC-AUC
-- Automatic train/test split with stratification
-- Feature importance analysis
-- Timestamped model persistence
-- Confusion matrix and classification report generation
-
-### Usage Example
-
-```python
-from src.classifiers import RandomForestBinaryClassifier, load_cancer_data, FeatureSelector
-
-# Load data
-X, y = load_cancer_data('data/raw/wisconsin_breast_cancer.csv')
-
-# Optional: Select important features
-selector = FeatureSelector({
-    'feature_importance_path': 'outputs/feature_importance.txt',
-    'top_n': 10
-})
-X_selected = selector.fit_transform(X, y)
-
-# Create and train classifier
-classifier = RandomForestBinaryClassifier({
-    'n_estimators': [100, 200, 300],
-    'max_depth': [10, 20, None],
-    'min_samples_split': [2, 5, 10],
-    'cv_folds': 5,
-    'random_state': 42
-})
-
-# Fit with automatic GridSearchCV tuning
-classifier.fit(X_selected, y)
-
-# View results
-classifier.print_summary()
-
-# Get best hyperparameters
-print(classifier.get_best_params())
-
-# Get feature importance
-importance = classifier.get_feature_importance()
-print(importance.head(10))
-
-# Save model with timestamped filename
-saved_path = classifier.save_model()
-print(f"Model saved to: {saved_path}")
-
-# Load model later
-loaded_classifier = RandomForestBinaryClassifier.load_model(saved_path)
-```
-
-### Configuration Parameters
-
-- `n_estimators`: List of values for number of trees (default: [100, 200, 300])
-- `max_depth`: List of values for maximum tree depth (default: [10, 20, None])
-- `min_samples_split`: List of values for minimum samples to split (default: [2, 5, 10])
-- `class_weight`: Strategy for handling imbalance (default: 'balanced')
-- `cv_folds`: Number of cross-validation folds (default: 5)
-- `test_size`: Proportion of data for testing (default: 0.2)
-- `scoring`: Metric for GridSearchCV (default: 'f1' - the northstar metric)
-- `random_state`: Random seed for reproducibility (default: 42)
-- `n_jobs`: Number of parallel jobs (default: -1 for all cores)
-
-### Evaluation Metrics
-
-- **F1 Score (Primary)**: Harmonic mean of precision and recall, used as the northstar metric for model selection
-- **Recall**: Ability to find all malignant cases (critical for cancer diagnosis)
-- **Precision**: Accuracy of malignant predictions
-- **ROC-AUC**: Overall discriminative ability
-
-### Model Persistence
-
-Models are saved as pickle files with timestamped filenames. By default, both the model and results are saved under the directory specified by `--output-dir` (default: `scripts/`). The model file is saved as `random_forest_model_YYYYMMDD_HHMMSS.pkl` in the output directory. Custom paths can be specified via `--output-dir` or `--model-filename`.
-
-### Class Imbalance Handling
-
-The Wisconsin breast cancer dataset has 357 benign and 212 malignant cases. `class_weight='balanced'` automatically adjusts weights inversely proportional to class frequencies. This ensures the model doesn't bias toward the majority class. Stratified train/test split maintains class distribution.
-
-## Training Pipeline
-
-The training pipeline integrates feature selection and Random Forest classification into a single CLI workflow.
-
-### Prerequisites
-
-1. **Complete Task 2 first**: Run pattern mining to generate feature importance scores
-
-   ```bash
-   python scripts/cancer_pattern_mining.py
-   ```
-
-2. **Activate virtual environment**: Ensure dependencies are installed
-
-   ```bash
-   source .venv/bin/activate  # macOS/Linux
-   # or
-   .venv\Scripts\activate  # Windows
-   ```
-
-### Quick Start
+#### Direct Prompt Mode
 
 ```bash
-# Train with feature selection (recommended)
-python scripts/train_random_forest.py --use-feature-selection --verbose
+# Symptom analysis
+python app.py --prompt "I have a fever, cough, and headache"
+
+# Breast cancer analysis
+python app.py --prompt "Patient has tumor radius 12.5, area 490.1, malignant characteristics"
+
+# Get help
+python app.py --help
 ```
 
-This will:
+#### Key Features
 
-1. Load the Wisconsin breast cancer dataset
-2. Select top 10 features based on pattern mining results
-3. Train Random Forest with GridSearchCV (5-fold CV)
-4. Evaluate on test set (F1, Recall, Precision, ROC-AUC)
-5. Save model and results to the directory specified by `--output-dir` (default: `scripts/`)
+- **AI-Powered Symptom Extraction**: Natural language processing for symptom identification
+- **Breast Cancer Feature Analysis**: Intelligent tumor measurement and characteristic extraction using Random Forest models
+- **Dynamic Medical Analysis**: Adapts to medical terminology variations
+- **Professional Medical Disclaimers**: Comprehensive safety recommendations
 
-### Key Features
-
-- **Intelligent Feature Selection**: Uses Task 2 pattern mining results to select discriminative features
-- **Multicollinearity Detection**: Automatically removes redundant features (e.g., keeps only one of radius/perimeter/area)
-- **Hyperparameter Tuning**: GridSearchCV with customizable parameter grid
-- **Class Imbalance Handling**: Uses `class_weight='balanced'` for fair evaluation
-- **Comprehensive Evaluation**: F1 (northstar), Recall, Precision, ROC-AUC, confusion matrix
-- **Model Persistence**: Timestamped pickle files for reproducibility
-
-### Virtual Environment Setup
-
-**Important**: Always activate the virtual environment before running the training script.
-
-```bash
-# Create virtual environment (first time only)
-python3 -m venv .venv
-
-# Activate virtual environment
-source .venv/bin/activate  # macOS/Linux
-# or
-.venv\Scripts\activate  # Windows
-
-# Install dependencies (first time only)
-python3 -m pip install -e .
-
-# Verify installation
-python scripts/train_random_forest.py --help
-```
-
-### Configuration Options
-
-See detailed documentation in `docs/random_forest_training.md` for:
-
-- Complete parameter reference
-- Usage examples
-- Troubleshooting guide
-- Best practices
-- Output interpretation
-
-### Example Workflow
-
-```bash
-# Step 1: Activate virtual environment
-source .venv/bin/activate
-
-# Step 2: Run pattern mining (if not done already)
-python scripts/cancer_pattern_mining.py
-
-# Step 3: Train classifier with feature selection
-python scripts/train_random_forest.py \
-    --use-feature-selection \
-    --top-n-features 10 \
-    --correlation-threshold 0.9 \
-    --verbose
-
-# Step 4: Review results
-# - Console output shows metrics and feature importance
-# - Model saved to scripts/random_forest_model_*.pkl
-# - Results summary saved to scripts/training_results_*.txt
-```
+> **Note**: The breast cancer analysis tool utilizes Random Forest machine learning models. For detailed information about model training, parameters, and performance metrics, see [`docs/random_forest_training.md`](docs/random_forest_training.md).
 
 ## Academic Context
 
