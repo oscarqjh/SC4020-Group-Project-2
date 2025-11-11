@@ -4,10 +4,13 @@ This module implements specific analysis tools for disease symptoms and breast c
 """
 
 import csv
+import math
+import pickle
 import re
 import random
 from pathlib import Path
-from typing import Dict, Optional, Type, List
+from typing import Any, Dict, Optional, Type, List
+import pandas as pd
 from pydantic import BaseModel, Field
 from crewai.tools.base_tool import BaseTool
 from crewai import LLM
@@ -414,6 +417,21 @@ class BreastCancerAnalysisTool(BaseTool):
         self._llm = self._initialize_llm()
         self._feature_importance_text = self._load_context_file("outputs/feature_importance.txt")
         self._analysis_summary_text = self._load_context_file("outputs/analysis_summary.txt")
+        self._cancer_prediction_model = None
+
+        model_relative_path = Path("outputs/task3_tool2/random_forest_model_20251106_001604.pkl")
+        project_root = Path(__file__).resolve().parents[2]
+        model_path = project_root / model_relative_path
+
+        try:
+            with model_path.open("rb") as model_file:
+                self._cancer_prediction_model = pickle.load(model_file)
+            print(f"Cancer prediction model loaded from {model_path}")
+        except FileNotFoundError:
+            print(f"Warning: Cancer prediction model file not found at {model_path}")
+        except Exception as exc:
+            print(f"Warning: Failed to load cancer prediction model: {exc}")
+            self._cancer_prediction_model = None
     
     @property
     def feature_extractor(self):
@@ -434,6 +452,11 @@ class BreastCancerAnalysisTool(BaseTool):
     def characteristic_categories(self):
         """Get the characteristic categories."""
         return getattr(self, '_characteristic_categories', {})
+    
+    @property
+    def cancer_prediction_model(self):
+        """Get the trained cancer prediction model."""
+        return getattr(self, "_cancer_prediction_model", None)
     
     @property
     def llm(self) -> Optional[LLM]:
@@ -477,9 +500,7 @@ class BreastCancerAnalysisTool(BaseTool):
         # Extract measurements and characteristics using AI-powered extraction
         measurements, characteristics = self._extract_features_with_ai(input_data)
         
-        # Placeholder cancer prediction using extracted measurements (TODO: replace with actual prediction)
-        feature_vector = list(measurements.values())
-        predicted_class, probability = self._predict_cancer(feature_vector)
+        predicted_class, probability = self._predict_cancer(measurements)
         
         # Generate analysis insights
         insights = self._generate_cancer_insights(measurements, characteristics)
@@ -700,27 +721,178 @@ class BreastCancerAnalysisTool(BaseTool):
         
         return insights
     
-    def _predict_cancer(self, features: List[float]) -> tuple[str, float]:
+    def _predict_cancer(self, measurements: Dict[str, Any]) -> tuple[str, float]:
         """
-        Placeholder binary breast cancer classifier.
+        Predict breast cancer classification using the trained model with fallbacks.
         
         Args:
-            features: List of tumor measurement values.
+            measurements: Dictionary of tumor measurement values keyed by feature name.
         
         Returns:
             Tuple containing predicted class label ("Benign" or "Malignant")
-            and the associated probability score.
+            and the associated probability score for the predicted class.
         """
-        if not features:
-            return "Benign", 0.5
-        
-        # Simple deterministic placeholder: use normalized sum as risk proxy
-        normalized_sum = sum(float(value) for value in features)
-        heuristic_score = 1 / (1 + pow(2.718281828459045, -0.02 * (normalized_sum - 15)))
-        
-        probability = max(0.05, min(0.95, float(heuristic_score)))
-        predicted_class = "Malignant" if probability >= 0.5 else "Benign"
-        return predicted_class, probability
+        print("measurements: ", measurements)
+
+        def random_prediction() -> tuple[str, float]:
+            random_prob_malignant = random.uniform(0.05, 0.95)
+            predicted_label = "Malignant" if random_prob_malignant >= 0.5 else "Benign"
+            probability_for_label = (
+                random_prob_malignant if predicted_label == "Malignant"
+                else 1 - random_prob_malignant
+            )
+            print("Using random probability fallback for cancer prediction.")
+            return predicted_label, probability_for_label
+
+        if not measurements:
+            print("No measurements provided; using random probability fallback.")
+            return random_prediction()
+
+        def heuristic_prediction() -> tuple[str, float]:
+            numeric_values = [
+                value for value in (
+                    self._coerce_measurement_value(val) for val in measurements.values()
+                ) if value is not None
+            ]
+
+            if not numeric_values:
+                print("Measurements missing numeric values; using random fallback.")
+                return random_prediction()
+
+            normalized_sum = sum(numeric_values)
+            malignant_probability = 1 / (1 + math.e ** (-0.02 * (normalized_sum - 15)))
+            malignant_probability = max(0.05, min(0.95, float(malignant_probability)))
+            predicted_label = "Malignant" if malignant_probability >= 0.5 else "Benign"
+            probability_for_label = (
+                malignant_probability if predicted_label == "Malignant"
+                else 1 - malignant_probability
+            )
+            print("Using heuristic fallback for cancer prediction.")
+            return predicted_label, probability_for_label
+
+        model = self.cancer_prediction_model
+        if model is None:
+            print("Cancer prediction model unavailable; using heuristic fallback.")
+            return heuristic_prediction()
+
+        feature_names = getattr(model, "feature_names", None)
+        if not feature_names:
+            print("Model feature names unavailable; using heuristic fallback.")
+            return heuristic_prediction()
+
+        canonical_measurements: Dict[str, float] = {}
+        for raw_key, raw_value in measurements.items():
+            canonical_key = self._canonicalize_measurement_key(raw_key)
+            numeric_value = self._coerce_measurement_value(raw_value)
+            if not canonical_key or numeric_value is None:
+                continue
+            if canonical_key in canonical_measurements:
+                print(f"Duplicate measurement key detected after normalization: {raw_key}")
+            canonical_measurements[canonical_key] = numeric_value
+
+        feature_values: list[float] = []
+        missing_features: list[str] = []
+        for feature_name in feature_names:
+            canonical_feature = self._canonicalize_measurement_key(feature_name)
+            if canonical_feature in canonical_measurements:
+                feature_values.append(canonical_measurements[canonical_feature])
+            else:
+                missing_features.append(feature_name)
+
+        if missing_features:
+            print(
+                "Missing required features for model prediction: "
+                f"{missing_features}. Using heuristic fallback."
+            )
+            return heuristic_prediction()
+
+        try:
+            feature_frame = pd.DataFrame(
+                [dict(zip(feature_names, feature_values))],
+                columns=feature_names,
+            )
+            print("Using trained Random Forest model for cancer prediction.")
+            predicted_label_array = model.predict(feature_frame)
+            probability_matrix = model.predict_proba(feature_frame)
+
+            predicted_label = predicted_label_array[0] if len(predicted_label_array) > 0 else "B"
+            mapped_label = "Malignant" if predicted_label == "M" else "Benign"
+
+            class_labels: list[str] = []
+            if hasattr(model, "model") and hasattr(model.model, "classes_"):
+                class_labels = list(model.model.classes_)
+            elif hasattr(model, "classes_"):
+                class_labels = list(model.classes_)
+
+            probability_for_label = self._extract_class_probability(
+                probability_matrix,
+                class_labels,
+                mapped_label,
+                fallback=0.5,
+            )
+
+            return mapped_label, probability_for_label
+        except Exception as exc:
+            print(f"Model-based cancer prediction failed: {exc}")
+            return heuristic_prediction()
+
+    @staticmethod
+    def _canonicalize_measurement_key(key: Any) -> str:
+        if key is None:
+            return ""
+        text = str(key).lower()
+        text = text.replace("-", " ")
+        text = text.replace("/", " ")
+        text = text.replace("(", " ").replace(")", " ")
+        text = re.sub(r"\s+", " ", text).strip()
+        text = text.replace("_", "")
+        text = text.replace(" ", "")
+        return re.sub(r"[^a-z0-9]", "", text)
+
+    @staticmethod
+    def _coerce_measurement_value(value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            match = re.search(r"-?\d+(?:\.\d+)?", value)
+            if match:
+                try:
+                    return float(match.group())
+                except ValueError:
+                    return None
+        return None
+
+    @staticmethod
+    def _extract_class_probability(
+        probability_matrix: Any,
+        class_labels: list[str],
+        target_label: str,
+        *,
+        fallback: Optional[float] = None,
+    ) -> float:
+        if probability_matrix.size == 0:
+            return fallback if fallback is not None else 0.5
+
+        target_symbol = "M" if target_label == "Malignant" else "B"
+        if class_labels:
+            try:
+                index = class_labels.index(target_symbol)
+                return float(probability_matrix[0][index])
+            except (ValueError, IndexError, TypeError):
+                pass
+
+        if target_symbol == "M" and probability_matrix.shape[1] > 1:
+            try:
+                return float(probability_matrix[0][1])
+            except (IndexError, TypeError):
+                pass
+        if target_symbol == "B":
+            try:
+                return float(probability_matrix[0][0])
+            except (IndexError, TypeError):
+                pass
+
+        return fallback if fallback is not None else 0.5
     
     def _generate_prediction_explanation(
         self,
