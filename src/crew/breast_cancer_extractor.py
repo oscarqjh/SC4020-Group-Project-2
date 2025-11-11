@@ -172,7 +172,7 @@ class BreastCancerFeatureExtractionTool(BaseTool):
                     f"Look for measurements like radius, perimeter, area, smoothness, compactness, concavity, symmetry, etc. "
                     f"Return ONLY a JSON-like format: measurement_name:value, measurement_name:value\n\n"
                     f"Text to analyze: {text}\n\n"
-                    f"Format your response as: radius:12.5, perimeter:85.2, area:480.1"
+                    f"Format your response as: radius_mean:17.99, perimeter_mean:10.38, area_mean:1001.0, smoothness_se:0.11840, compactness_se:0.27760, concavity_se:0.3001, concave_points_se:0.14710, symmetry_se:0.4601, fractal_dimension_se:0.11890, radius_worst:20.57, perimeter_worst:17.77, area_worst:1326.0, smoothness_worst:0.08474, compactness_worst:0.07864, concavity_worst:0.0869, concave_points_worst:0.07017, symmetry_worst:0.2750, fractal_dimension_worst:0.1860"
                 ),
                 agent=self.extraction_agent,
                 expected_output="Comma-separated list of measurement_name:value pairs"
@@ -185,7 +185,7 @@ class BreastCancerFeatureExtractionTool(BaseTool):
                     f"Look for characteristics like malignant, benign, irregular, smooth, dense, calcified, etc. "
                     f"Return ONLY a comma-separated list of characteristic names, no explanations.\n\n"
                     f"Text to analyze: {text}\n\n"
-                    f"Format your response as: malignant, irregular, dense"
+                    f"Format your response as: malignant, benign"
                 ),
                 agent=self.extraction_agent,
                 expected_output="A comma-separated list of tumor characteristics"
