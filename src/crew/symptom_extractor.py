@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Type
 from crewai import Agent, Task, Crew
 from pydantic import BaseModel, Field
 from crewai.tools.base_tool import BaseTool
+from processors.symptom_data_processor import SymptomDataProcessor
 
 
 class SymptomExtractionInput(BaseModel):
@@ -65,6 +66,7 @@ class SymptomExtractionTool(BaseTool):
         
         # Initialize the extraction agent
         self._init_extraction_agent()
+        self._symptom_processor = SymptomDataProcessor(data_path="")
     
     def _init_extraction_agent(self):
         """Initialize the symptom extraction agent."""
@@ -119,13 +121,13 @@ class SymptomExtractionTool(BaseTool):
         
         # First pass: AI-based extraction
         ai_symptoms = self._ai_extract_symptoms(text)
-        
+        print("ai_symptoms: ", ai_symptoms)
         # Second pass: Rule-based validation and enhancement
         rule_symptoms = self._rule_based_extraction(text)
         
         # Combine and deduplicate
         all_symptoms = list(set(ai_symptoms + rule_symptoms))
-        
+        print("all_symptoms: ", all_symptoms)
         # Filter and standardize
         standardized_symptoms = self._standardize_symptoms(all_symptoms)
         
@@ -150,7 +152,7 @@ class SymptomExtractionTool(BaseTool):
             # Create extraction task
             extraction_task = Task(
                 description=(
-                    f"Analyze the following text and extract all medical symptoms mentioned. "
+                    f"Analyze the following text and extract all medical symptoms, conditions or problems mentioned. "
                     f"Look for both explicit symptom names and implicit descriptions of health issues. "
                     f"Return ONLY a comma-separated list of standardized symptom names, no explanations.\n\n"
                     f"Text to analyze: {text}\n\n"
@@ -169,13 +171,13 @@ class SymptomExtractionTool(BaseTool):
             
             # Execute task
             result = crew.kickoff()
-            
+
             # Parse the result
-            if isinstance(result, str):
+            if isinstance(result.raw, str):
                 # Clean and split the result
-                symptoms = [s.strip() for s in result.split(',') if s.strip()]
-                # Remove any non-symptom text
-                symptoms = [s for s in symptoms if self._is_likely_symptom(s)]
+                symptoms = [s.strip() for s in result.raw.split(',') if s.strip()]
+                # # Remove any non-symptom text
+                # symptoms = [s for s in symptoms if self._is_likely_symptom(s)]
                 return symptoms
             
         except Exception as e:
@@ -273,34 +275,10 @@ class SymptomExtractionTool(BaseTool):
         """
         standardized = []
         
-        # Mapping for common variations
-        standardization_map = {
-            'coughing': 'cough',
-            'temperature': 'fever',
-            'hot': 'fever',
-            'tired': 'fatigue',
-            'exhausted': 'fatigue',
-            'head pain': 'headache',
-            'throat pain': 'sore throat',
-            'stomach pain': 'abdominal pain',
-            'breathing difficulty': 'shortness of breath',
-            'nasal congestion': 'runny nose',
-            'stuffy nose': 'runny nose',
-            'skin irritation': 'rash',
-            'sick': 'nausea'
-        }
-        
         for symptom in symptoms:
-            symptom_lower = symptom.lower().strip()
+            standardized_symptom = self._symptom_processor.normalize_symptom(symptom).lower().strip()
             
-            # Check for standardization mapping
-            if symptom_lower in standardization_map:
-                standardized_symptom = standardization_map[symptom_lower]
-            else:
-                standardized_symptom = symptom_lower
-            
-            # Only add if not already present
-            if standardized_symptom not in standardized:
+            if standardized_symptom and standardized_symptom not in standardized:
                 standardized.append(standardized_symptom)
         
         return standardized

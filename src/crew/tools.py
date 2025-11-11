@@ -5,7 +5,7 @@ This module implements specific analysis tools for disease symptoms and breast c
 
 import re
 import random
-from typing import Dict, Any, Type
+from typing import Dict, Type, List
 from pydantic import BaseModel, Field
 from crewai.tools.base_tool import BaseTool
 
@@ -40,33 +40,9 @@ class DiseaseAnalysisTool(BaseTool):
     def __init__(self):
         super().__init__()
         
-        # Initialize the AI-powered symptom extractor
-        try:
-            self._symptom_extractor = create_symptom_extractor()
-            print("AI-powered symptom extractor initialized in DiseaseAnalysisTool")
-        except Exception as e:
-            print(f"Warning: Could not initialize symptom extractor: {e}")
-            self._symptom_extractor = None
-        
-        # Get dynamic symptom patterns from the extractor
-        if self._symptom_extractor:
-            self._symptom_categories = self._symptom_extractor.get_symptom_categories()
-        else:
-            # Fallback symptom categories
-            self._symptom_categories = {
-                'respiratory': ['cough', 'sore throat', 'runny nose', 'shortness of breath'],
-                'systemic': ['fever', 'fatigue', 'chills'],
-                'neurological': ['headache', 'dizziness'],
-                'gastrointestinal': ['nausea', 'diarrhea', 'abdominal pain']
-            }
-        
-        # Create patterns from all known symptoms for fallback detection
-        self.symptom_patterns = []
-        for category, symptoms in self._symptom_categories.items():
-            for symptom in symptoms:
-                # Create regex pattern for the symptom
-                pattern = r'\b(?:' + re.escape(symptom) + r')\b'
-                self.symptom_patterns.append(pattern)
+        self._symptom_extractor = self._initialize_symptom_extractor()
+        self._symptom_categories = self._load_symptom_categories()
+        self.symptom_patterns = self._compile_symptom_patterns(self._symptom_categories)
     
     @property
     def symptom_extractor(self):
@@ -115,7 +91,7 @@ class DiseaseAnalysisTool(BaseTool):
             raise ValueError("Invalid input data provided")
         
         # Extract symptoms from input using AI-powered extraction
-        detected_symptoms = self._extract_symptoms_with_ai(input_data)
+        detected_symptoms = self._extract_symptoms(input_data)
         
         # Generate diagnosis suggestions (placeholder implementation)
         diagnosis_suggestions = self._generate_diagnosis_suggestions(detected_symptoms)
@@ -126,7 +102,7 @@ class DiseaseAnalysisTool(BaseTool):
         return AnalysisResult(
             analysis_type=AnalysisType.DISEASE_SYMPTOMS,
             confidence=confidence,
-            primary_findings=f"Detected symptoms: {', '.join(detected_symptoms)}",
+            primary_findings=self._format_primary_findings(detected_symptoms),
             recommendations=diagnosis_suggestions,
             raw_data={
                 "detected_symptoms": detected_symptoms,
@@ -140,43 +116,15 @@ class DiseaseAnalysisTool(BaseTool):
             }
         )
     
-    def _extract_symptoms_with_ai(self, text: str) -> list[str]:
-        """Extract symptoms from input text using AI-powered extraction."""
-        try:
-            # Use the AI-powered symptom extractor if available
-            if self.symptom_extractor:
-                ai_symptoms = self.symptom_extractor.extract_symptoms(text)
-                
-                # If AI extraction returns symptoms, use them
-                if ai_symptoms:
-                    return ai_symptoms
-            
-            # Fallback to rule-based extraction if AI fails or unavailable
-            return self._extract_symptoms_fallback(text)
-            
-        except Exception as e:
-            print(f"AI symptom extraction failed: {e}")
-            # Fallback to rule-based extraction
-            return self._extract_symptoms_fallback(text)
-    
-    def _extract_symptoms_fallback(self, text: str) -> list[str]:
-        """Fallback method for symptom extraction using rule-based patterns."""
-        symptoms = []
-        text_lower = text.lower()
-        
-        # Use the dynamic symptom categories for fallback
-        symptom_categories = getattr(self, '_symptom_categories', {})
-        for category, symptom_list in symptom_categories.items():
-            for symptom in symptom_list:
-                pattern = r'\b' + re.escape(symptom) + r'\b'
-                if re.search(pattern, text_lower):
-                    symptoms.append(symptom)
-        
-        return list(set(symptoms))  # Remove duplicates
-    
     def _extract_symptoms(self, text: str) -> list[str]:
-        """Legacy method - now redirects to AI-powered extraction."""
-        return self._extract_symptoms_with_ai(text)
+        """Extract symptoms using the shared AI-powered symptom extractor."""
+        if not self.symptom_extractor:
+            return []
+        try:
+            return self.symptom_extractor.extract_symptoms(text)
+        except Exception as exc:
+            print(f"Symptom extraction failed: {exc}")
+            return []
     
     def _generate_diagnosis_suggestions(self, symptoms: list[str]) -> list[str]:
         """Generate diagnosis suggestions based on symptoms with enhanced logic."""
@@ -243,6 +191,37 @@ class DiseaseAnalysisTool(BaseTool):
             return f"Analysis: {result.primary_findings}. Recommendations: {'; '.join(result.recommendations)}"
         except Exception as e:
             return f"Error in disease analysis: {str(e)}"
+    
+    def _initialize_symptom_extractor(self):
+        try:
+            extractor = create_symptom_extractor()
+            print("AI-powered symptom extractor initialized in DiseaseAnalysisTool")
+            return extractor
+        except Exception as exc:
+            print(f"Warning: Could not initialize symptom extractor: {exc}")
+            return None
+
+    def _load_symptom_categories(self) -> Dict[str, List[str]]:
+        if self.symptom_extractor:
+            return self.symptom_extractor.get_symptom_categories()
+        return {
+            'respiratory': ['cough', 'sore throat', 'runny nose', 'shortness of breath'],
+            'systemic': ['fever', 'fatigue', 'chills'],
+            'neurological': ['headache', 'dizziness'],
+            'gastrointestinal': ['nausea', 'diarrhea', 'abdominal pain'],
+        }
+
+    def _compile_symptom_patterns(self, categories: Dict[str, List[str]]) -> List[str]:
+        patterns: List[str] = []
+        for symptom_list in categories.values():
+            for symptom in symptom_list:
+                patterns.append(r'\b(?:' + re.escape(symptom) + r')\b')
+        return patterns
+
+    def _format_primary_findings(self, symptoms: List[str]) -> str:
+        if not symptoms:
+            return "No symptoms detected."
+        return f"Detected symptoms: {', '.join(symptoms)}"
 
 
 class BreastCancerAnalysisInput(BaseModel):

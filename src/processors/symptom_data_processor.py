@@ -109,6 +109,21 @@ class SymptomDataProcessor:
         #     return synsets[0].lemmas()[0].name().replace('_', ' ')
         return symptom
 
+    def normalize_symptom(self, symptom):
+        """
+        Public helper for normalizing symptoms that handles cleaning internally.
+
+        Args:
+            symptom (str): Raw symptom string.
+
+        Returns:
+            str: Normalized symptom string, or empty string if none.
+        """
+        cleaned_symptom = self._clean_symptom(symptom)
+        if not cleaned_symptom:
+            return ""
+        return self._normalize_symptom(cleaned_symptom)
+
     def process_data(self, group_by_disease=True, min_transactions=10):
         """
         Executes the full data processing pipeline:
