@@ -121,13 +121,10 @@ class SymptomExtractionTool(BaseTool):
         
         # First pass: AI-based extraction
         ai_symptoms = self._ai_extract_symptoms(text)
-        print("ai_symptoms: ", ai_symptoms)
         # Second pass: Rule-based validation and enhancement
         rule_symptoms = self._rule_based_extraction(text)
-        
         # Combine and deduplicate
         all_symptoms = list(set(ai_symptoms + rule_symptoms))
-        print("all_symptoms: ", all_symptoms)
         # Filter and standardize
         standardized_symptoms = self._standardize_symptoms(all_symptoms)
         

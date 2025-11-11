@@ -3,11 +3,15 @@ Medical analysis tools for the crew system.
 This module implements specific analysis tools for disease symptoms and breast cancer analysis.
 """
 
+import csv
 import re
 import random
-from typing import Dict, Type, List
+from pathlib import Path
+from typing import Dict, Optional, Type, List
 from pydantic import BaseModel, Field
 from crewai.tools.base_tool import BaseTool
+from crewai import LLM
+from os import getenv
 
 from .base import AnalysisResult, AnalysisType
 from .symptom_extractor import create_symptom_extractor, SymptomExtractionTool
@@ -39,10 +43,11 @@ class DiseaseAnalysisTool(BaseTool):
     
     def __init__(self):
         super().__init__()
-        
         self._symptom_extractor = self._initialize_symptom_extractor()
         self._symptom_categories = self._load_symptom_categories()
         self.symptom_patterns = self._compile_symptom_patterns(self._symptom_categories)
+        self._precaution_mapping = self._load_precaution_mapping()
+        self._llm = self._initialize_llm()
     
     @property
     def symptom_extractor(self):
@@ -92,27 +97,40 @@ class DiseaseAnalysisTool(BaseTool):
         
         # Extract symptoms from input using AI-powered extraction
         detected_symptoms = self._extract_symptoms(input_data)
+        normalized_symptoms = self._normalize_symptoms(detected_symptoms)
         
-        # Generate diagnosis suggestions (placeholder implementation)
-        diagnosis_suggestions = self._generate_diagnosis_suggestions(detected_symptoms)
+        disease_predictions = self._predict_disease(normalized_symptoms)
+        top_prediction = disease_predictions[0] if disease_predictions else None
+        top_precautions = self._get_precautions(top_prediction["disease"]) if top_prediction else []
         
-        # Calculate confidence based on number of symptoms detected
-        confidence = min(0.9, len(detected_symptoms) * 0.2 + 0.3)
+        # Generate diagnosis suggestions leveraging LLM placeholder
+        diagnosis_suggestions = self._generate_diagnosis_suggestions(
+            top_prediction=top_prediction,
+            # predictions=disease_predictions,
+            symptoms=normalized_symptoms,
+            precautions=top_precautions,
+        )
+        
+        # Calculate confidence based on prediction probability (fallback to minimum confidence)
+        confidence = top_prediction["probability"] if top_prediction else 0.3
         
         return AnalysisResult(
             analysis_type=AnalysisType.DISEASE_SYMPTOMS,
             confidence=confidence,
-            primary_findings=self._format_primary_findings(detected_symptoms),
+            primary_findings=self._format_primary_findings(normalized_symptoms, top_prediction),
             recommendations=diagnosis_suggestions,
             raw_data={
-                "detected_symptoms": detected_symptoms,
-                "symptom_count": len(detected_symptoms),
+                "detected_symptoms": normalized_symptoms,
+                "symptom_count": len(normalized_symptoms),
+                "disease_predictions": disease_predictions,
+                "top_disease_precautions": top_precautions,
                 "input_text": input_data
             },
             metadata={
                 "tool_name": self.name,
                 "analysis_timestamp": "placeholder_timestamp",
-                "processing_method": "pattern_matching"
+                "processing_method": "pattern_matching_with_placeholder_prediction",
+                "prediction_model": "placeholder_predict_disease_v1"
             }
         )
     
@@ -126,69 +144,70 @@ class DiseaseAnalysisTool(BaseTool):
             print(f"Symptom extraction failed: {exc}")
             return []
     
-    def _generate_diagnosis_suggestions(self, symptoms: list[str]) -> list[str]:
-        """Generate diagnosis suggestions based on symptoms with enhanced logic."""
-        if not symptoms:
-            return ["Please provide more specific symptoms for accurate analysis."]
-        
-        # Enhanced diagnosis logic based on symptom combinations
-        suggestions = []
-        
-        # Respiratory symptoms
-        respiratory_symptoms = {'cough', 'sore throat', 'runny nose', 'shortness of breath', 'wheezing', 'chest pain'}
-        has_respiratory = any(symptom in respiratory_symptoms for symptom in symptoms)
-        
-        # Systemic symptoms
-        systemic_symptoms = {'fever', 'fatigue', 'chills', 'sweating'}
-        has_systemic = any(symptom in systemic_symptoms for symptom in symptoms)
-        
-        # Gastrointestinal symptoms
-        gi_symptoms = {'nausea', 'vomiting', 'diarrhea', 'abdominal pain', 'stomach pain'}
-        has_gi = any(symptom in gi_symptoms for symptom in symptoms)
-        
-        # Neurological symptoms
-        neuro_symptoms = {'headache', 'dizziness', 'confusion'}
-        has_neuro = any(symptom in neuro_symptoms for symptom in symptoms)
-        
-        # Generate specific suggestions based on symptom patterns
-        if 'fever' in symptoms and 'cough' in symptoms:
-            suggestions.append("Possible respiratory infection - Consult healthcare provider for proper evaluation")
-        
-        if has_respiratory and has_systemic:
-            suggestions.append("Upper respiratory tract infection - Consider rest, fluids, and medical consultation")
-        
-        if 'runny nose' in symptoms and 'headache' in symptoms:
-            suggestions.append("Possible cold or seasonal allergies - Monitor symptoms and consider antihistamines if appropriate")
-        
-        if has_gi and 'fever' in symptoms:
-            suggestions.append("Possible gastrointestinal infection - Stay hydrated and seek medical attention if symptoms persist")
-        
-        if has_neuro and 'fever' in symptoms:
-            suggestions.append("Neurological symptoms with fever require immediate medical evaluation")
-        
-        if 'shortness of breath' in symptoms or 'chest pain' in symptoms:
-            suggestions.append("Respiratory or cardiac symptoms detected - Seek immediate medical attention")
-        
-        # Default suggestions if no specific patterns match
-        if not suggestions:
-            general_suggestions = [
-                "Monitor symptoms and consult healthcare provider if they persist or worsen",
-                "Consider rest, adequate hydration, and over-the-counter symptom relief as appropriate",
-                "Seek medical attention if symptoms are severe or concerning",
-                "Track symptom progression and report changes to healthcare provider"
+    def _generate_diagnosis_suggestions(
+        self,
+        *,
+        top_prediction: Optional[dict],
+        symptoms: list[str],
+        precautions: list[str],
+    ) -> list[str]:
+        """Generate diagnosis suggestions for the top predicted disease using LLM placeholder."""
+        if not top_prediction:
+            return [
+                "Unable to determine likely conditions from the provided symptoms.",
+                "Please supply more detailed symptoms for improved analysis.",
+                "This analysis is preliminary - professional medical evaluation is recommended",
             ]
-            suggestions.extend(random.sample(general_suggestions, min(2, len(general_suggestions))))
         
-        # Add general advice
-        suggestions.append("This analysis is preliminary - professional medical evaluation is recommended")
+        llm = self.llm
+        llm_response = None
+
+        precautions_text = "; ".join(precautions) if precautions else "No specific precautions available."
+        prompt = (
+            "You are a medical triage assistant. Using the provided context, generate 2-3 actionable, concise "
+            "recommendations for the patient. Always include when to seek professional care.\n\n"
+            f"Patient's Condition: {top_prediction['disease']} ({top_prediction['probability']:.0%} confidence)\n"
+            f"Symptoms: {', '.join(symptoms) or 'unspecified'}\n"
+            f"Precautions: {precautions_text}\n"
+            "Respond as bullet-like sentences separated by newline characters."
+        )
+        try:
+            llm_response = llm.call(prompt)
+            print("llm_response: ", llm_response)
+        except (AttributeError, TypeError) as exc:
+            print(f"LLM call failed due to configuration issue: {exc}")
+        except Exception as exc:  # noqa: BLE001 - fallback logging
+            print(f"LLM call failed: {exc}")
         
-        return suggestions
+        llm_suggestions = []
+        if llm_response:
+            lines = [line.strip("•- ").strip() for line in llm_response.splitlines()]
+            llm_suggestions = [line for line in lines if line]
+        
+        if not llm_suggestions:
+            precautions_text = "; ".join(precautions) if precautions else "No specific precautions available."
+            llm_suggestions = [
+                f"Top predicted condition: {top_prediction['disease']} "
+                f"({top_prediction['probability']:.0%} confidence).",
+                f"Recommended precautions: {precautions_text}",
+            ]
+        
+        if all("professional" not in suggestion.lower() for suggestion in llm_suggestions):
+            llm_suggestions.append("This analysis is preliminary - professional medical evaluation is recommended")
+        
+        return llm_suggestions
     
     def _run(self, symptoms_description: str) -> str:
         """CrewAI tool interface method."""
         try:
             result = self.analyze(symptoms_description)
-            return f"Analysis: {result.primary_findings}. Recommendations: {'; '.join(result.recommendations)}"
+            top_prediction = result.raw_data.get("disease_predictions", [])
+            top_disease = top_prediction[0]["disease"] if top_prediction else "undetermined condition"
+            return (
+                f"Analysis: {result.primary_findings}. "
+                f"Top predicted disease: {top_disease}. "
+                f"Recommendations: {'; '.join(result.recommendations)}"
+            )
         except Exception as e:
             return f"Error in disease analysis: {str(e)}"
     
@@ -199,6 +218,20 @@ class DiseaseAnalysisTool(BaseTool):
             return extractor
         except Exception as exc:
             print(f"Warning: Could not initialize symptom extractor: {exc}")
+            return None
+
+    def _initialize_llm(self) -> Optional[LLM]:
+        try:
+            llm = LLM(
+                model="openai/gpt-4o",
+                api_key=getenv("OPENAI_API_KEY"),
+                temperature=0.7,
+                max_tokens=4000,
+            )
+            print("CrewAI LLM initialized in DiseaseAnalysisTool")
+            return llm
+        except Exception as exc:  # noqa: BLE001 - logging for initialization issues
+            print(f"Warning: Could not initialize CrewAI LLM: {exc}")
             return None
 
     def _load_symptom_categories(self) -> Dict[str, List[str]]:
@@ -217,11 +250,106 @@ class DiseaseAnalysisTool(BaseTool):
             for symptom in symptom_list:
                 patterns.append(r'\b(?:' + re.escape(symptom) + r')\b')
         return patterns
-
-    def _format_primary_findings(self, symptoms: List[str]) -> str:
+    
+    def _normalize_symptoms(self, symptoms: List[str]) -> List[str]:
+        normalized = []
+        seen = set()
+        for symptom in symptoms:
+            cleaned = re.sub(r'[^a-zA-Z\s]', '', symptom or '')
+            cleaned = re.sub(r'\s+', ' ', cleaned).strip().lower()
+            if cleaned and cleaned not in seen:
+                normalized.append(cleaned)
+                seen.add(cleaned)
+        return normalized
+    
+    def _predict_disease(self, symptoms: List[str]) -> List[dict]:
+        """
+        Placeholder disease prediction that returns top five disease hypotheses with probabilities.
+        """
         if not symptoms:
-            return "No symptoms detected."
-        return f"Detected symptoms: {', '.join(symptoms)}"
+            return []
+        
+        candidate_diseases = [
+            "Common Cold",
+            "Influenza",
+            "Migraine",
+            "Gastroenteritis",
+            "Bronchial Asthma",
+            "Hypertension",
+            "Diabetes",
+            "Pneumonia",
+            "Heart attack",
+        ]
+        
+        randomizer = random.Random("|".join(symptoms))
+        randomizer.shuffle(candidate_diseases)
+        selected = candidate_diseases[:5]
+        
+        raw_scores = [randomizer.uniform(0.2, 1.0) for _ in selected]
+        score_sum = sum(raw_scores) or 1.0
+        
+        predictions = []
+        for disease, score in zip(selected, raw_scores):
+            predictions.append(
+                {
+                    "disease": disease,
+                    "probability": round(score / score_sum, 4),
+                }
+            )
+        
+        predictions.sort(key=lambda item: item["probability"], reverse=True)
+        return predictions
+    
+    def _normalize_disease_name(self, disease: str) -> str:
+        return re.sub(r'\s+', ' ', disease.strip().lower())
+    
+    def _load_precaution_mapping(self) -> Dict[str, List[str]]:
+        csv_path = Path(__file__).resolve().parents[2] / "data" / "symptom_precaution.csv"
+        precaution_mapping: Dict[str, List[str]] = {}
+        
+        if not csv_path.exists():
+            print(f"Warning: Precaution data file not found at {csv_path}")
+            return precaution_mapping
+        
+        try:
+            with csv_path.open(mode="r", encoding="utf-8", newline="") as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    disease_name = row.get("Disease")
+                    if not disease_name:
+                        continue
+                    normalized_name = self._normalize_disease_name(disease_name)
+                    precautions = [
+                        (row.get("Precaution_1") or "").strip(),
+                        (row.get("Precaution_2") or "").strip(),
+                        (row.get("Precaution_3") or "").strip(),
+                        (row.get("Precaution_4") or "").strip(),
+                    ]
+                    precaution_mapping[normalized_name] = [p for p in precautions if p]
+        except (OSError, csv.Error) as exc:
+            print(f"Warning: Failed to load precautions: {exc}")
+        
+        return precaution_mapping
+    
+    def _get_precautions(self, disease: Optional[str]) -> List[str]:
+        if not disease:
+            return []
+        normalized_name = self._normalize_disease_name(disease)
+        return self._precaution_mapping.get(normalized_name, [])
+    
+    def _format_primary_findings(self, symptoms: List[str], top_prediction: Optional[dict]) -> str:
+        if not symptoms:
+            base = "No symptoms detected."
+        else:
+            base = f"Detected symptoms: {', '.join(symptoms)}."
+        
+        if top_prediction:
+            return f"{base} \nTop predicted disease: {top_prediction['disease']} ({top_prediction['probability']:.0%} confidence)."
+        return base
+
+    @property
+    def llm(self) -> Optional[LLM]:
+        return getattr(self, "_llm", None)
 
 
 class BreastCancerAnalysisInput(BaseModel):
@@ -281,6 +409,11 @@ class BreastCancerAnalysisTool(BaseTool):
             'radius', 'perimeter', 'area', 'smoothness', 'compactness',
             'concavity', 'symmetry', 'fractal', 'texture'
         ]
+        
+        # Initialize LLM context and supporting artifacts
+        self._llm = self._initialize_llm()
+        self._feature_importance_text = self._load_context_file("outputs/feature_importance.txt")
+        self._analysis_summary_text = self._load_context_file("outputs/analysis_summary.txt")
     
     @property
     def feature_extractor(self):
@@ -301,6 +434,11 @@ class BreastCancerAnalysisTool(BaseTool):
     def characteristic_categories(self):
         """Get the characteristic categories."""
         return getattr(self, '_characteristic_categories', {})
+    
+    @property
+    def llm(self) -> Optional[LLM]:
+        """Get the CrewAI LLM instance."""
+        return getattr(self, "_llm", None)
     
     def can_handle(self, input_data: str) -> bool:
         """
@@ -339,27 +477,48 @@ class BreastCancerAnalysisTool(BaseTool):
         # Extract measurements and characteristics using AI-powered extraction
         measurements, characteristics = self._extract_features_with_ai(input_data)
         
-        # Generate analysis insights (placeholder implementation)
+        # Placeholder cancer prediction using extracted measurements (TODO: replace with actual prediction)
+        feature_vector = list(measurements.values())
+        predicted_class, probability = self._predict_cancer(feature_vector)
+        
+        # Generate analysis insights
         insights = self._generate_cancer_insights(measurements, characteristics)
+        
+        explanation = self._generate_prediction_explanation(
+            predicted_class=predicted_class,
+            probability=probability,
+            measurements=measurements,
+            characteristics=characteristics,
+        )
+        if explanation:
+            insights.insert(0, explanation)
         
         # Calculate confidence based on amount of data provided
         data_completeness = len(measurements) + len(characteristics)
-        confidence = min(0.95, data_completeness * 0.1 + 0.4)
+        baseline_confidence = min(0.95, data_completeness * 0.1 + 0.4)
+        confidence = max(baseline_confidence, probability)
         
         return AnalysisResult(
             analysis_type=AnalysisType.BREAST_CANCER,
             confidence=confidence,
-            primary_findings=f"Analyzed {len(measurements)} measurements and {len(characteristics)} characteristics",
+            primary_findings=(
+                f"Analyzed {len(measurements)} measurements and {len(characteristics)} characteristics "
+                f"→ predicted class {predicted_class} ({probability:.0%} probability)"
+            ),
             recommendations=insights,
             raw_data={
                 "measurements": measurements,
                 "characteristics": characteristics,
+                "prediction": {
+                    "predicted_class": predicted_class,
+                    "probability": probability,
+                },
                 "input_text": input_data
             },
             metadata={
                 "tool_name": self.name,
                 "analysis_timestamp": "placeholder_timestamp",
-                "processing_method": "feature_extraction"
+                "processing_method": "feature_extraction_with_placeholder_prediction"
             }
         )
     
@@ -409,7 +568,7 @@ class BreastCancerAnalysisTool(BaseTool):
         
         # Extract characteristics using all categories
         characteristic_categories = getattr(self, '_characteristic_categories', {})
-        for category, char_list in characteristic_categories.items():
+        for _, char_list in characteristic_categories.items():
             for characteristic in char_list:
                 pattern = r'\b' + re.escape(characteristic) + r'\b'
                 if re.search(pattern, text_lower):
@@ -540,6 +699,105 @@ class BreastCancerAnalysisTool(BaseTool):
         insights.append("This AI analysis supports but does not replace expert medical evaluation")
         
         return insights
+    
+    def _predict_cancer(self, features: List[float]) -> tuple[str, float]:
+        """
+        Placeholder binary breast cancer classifier.
+        
+        Args:
+            features: List of tumor measurement values.
+        
+        Returns:
+            Tuple containing predicted class label ("Benign" or "Malignant")
+            and the associated probability score.
+        """
+        if not features:
+            return "Benign", 0.5
+        
+        # Simple deterministic placeholder: use normalized sum as risk proxy
+        normalized_sum = sum(float(value) for value in features)
+        heuristic_score = 1 / (1 + pow(2.718281828459045, -0.02 * (normalized_sum - 15)))
+        
+        probability = max(0.05, min(0.95, float(heuristic_score)))
+        predicted_class = "Malignant" if probability >= 0.5 else "Benign"
+        return predicted_class, probability
+    
+    def _generate_prediction_explanation(
+        self,
+        *,
+        predicted_class: str,
+        probability: float,
+        measurements: Dict[str, float],
+        characteristics: list[str],
+    ) -> Optional[str]:
+        """
+        Generate an LLM-based explanation for the cancer prediction.
+        """
+        if not self.llm:
+            return (
+                f"Prediction summary: {predicted_class} ({probability:.0%} probability). "
+                "LLM explanation unavailable because the language model is not configured."
+            )
+        
+        feature_info = self._feature_importance_text or "Feature importance data unavailable."
+        analysis_summary = self._analysis_summary_text or "No analysis summary available."
+        measurement_text = ", ".join(f"{k}={v}" for k, v in measurements.items()) or "No measurements provided."
+        characteristic_text = ", ".join(characteristics) or "No qualitative characteristics provided."
+        
+        prompt = (
+            "You are an oncology decision-support assistant. Explain the breast cancer prediction.\n\n"
+            f"Predicted class: {predicted_class}\n"
+            f"Probability: {probability:.2f}\n"
+            f"Measurements: {measurement_text}\n"
+            f"Characteristics: {characteristic_text}\n\n"
+            "Feature importance report:\n"
+            f"{feature_info}\n\n"
+            "Sequential pattern mining summary:\n"
+            f"{analysis_summary}\n\n"
+            "Provide a concise explanation (2-3 sentences) describing why the prediction aligns "
+            "with the feature importance and discriminative patterns when relevant. Mention specific "
+            "measurements that influenced the decision. Conclude with a reminder to seek professional evaluation."
+        )
+        
+        try:
+            response = self.llm.call(prompt)
+            if response:
+                return response.strip()
+        except Exception as exc:  # noqa: BLE001 - logging placeholder
+            print(f"LLM explanation generation failed: {exc}")
+        
+        return (
+            f"Prediction summary: {predicted_class} ({probability:.0%} probability). "
+            "Failed to generate LLM explanation."
+        )
+    
+    def _initialize_llm(self) -> Optional[LLM]:
+        """Initialize LLM for prediction explanations."""
+        try:
+            llm = LLM(
+                model="openai/gpt-4o",
+                api_key=getenv("OPENAI_API_KEY"),
+                temperature=0.3,
+                max_tokens=4000,
+            )
+            print("CrewAI LLM initialized in BreastCancerAnalysisTool")
+            return llm
+        except Exception as exc:
+            print(f"Warning: Could not initialize CrewAI LLM for BreastCancerAnalysisTool: {exc}")
+            return None
+    
+    def _load_context_file(self, relative_path: str) -> Optional[str]:
+        """Load contextual text files for LLM prompts."""
+        project_root = Path(__file__).resolve().parents[2]
+        full_path = project_root / relative_path
+        try:
+            with full_path.open("r", encoding="utf-8") as file:
+                return file.read().strip()
+        except FileNotFoundError:
+            print(f"Context file not found: {full_path}")
+        except OSError as exc:
+            print(f"Failed to read context file {full_path}: {exc}")
+        return None
     
     def _run(self, tumor_data: str) -> str:
         """CrewAI tool interface method."""
