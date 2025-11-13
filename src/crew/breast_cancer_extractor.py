@@ -142,11 +142,17 @@ class BreastCancerFeatureExtractionTool(BaseTool):
         # Combine and standardize
         combined_measurements = {**rule_measurements, **ai_measurements}
         combined_characteristics = list(set(ai_characteristics + rule_characteristics))
-        
+
         # Filter and standardize
         standardized_measurements = self._standardize_measurements(combined_measurements)
         standardized_characteristics = self._standardize_characteristics(combined_characteristics)
-        
+
+        # If nothing was extracted by AI + rule-based parsing, try a simple key:value fallback parser
+        if not standardized_measurements:
+            fallback = self._kv_fallback_parse(text)
+            if fallback:
+                standardized_measurements = self._standardize_measurements(fallback)
+
         return standardized_measurements, standardized_characteristics
     
     def _ai_extract_features(self, text: str) -> tuple[Dict[str, float], List[str]]:
@@ -227,8 +233,9 @@ class BreastCancerFeatureExtractionTool(BaseTool):
         if not result:
             return measurements
         
-        # Look for patterns like "radius:12.5" or "radius: 12.5"
-        measurement_pattern = r'(\w+):\s*(\d+\.?\d*)'
+        # Look for patterns like "radius:12.5", "radius_mean:12.5", or "radius: 12.5"
+        # Updated pattern to handle underscores and various suffixes
+        measurement_pattern = r'(\w+(?:_\w+)?):\s*(\d+\.?\d*)'
         matches = re.findall(measurement_pattern, result.lower())
         
         for name, value in matches:
@@ -237,6 +244,39 @@ class BreastCancerFeatureExtractionTool(BaseTool):
             except ValueError:
                 continue
         
+        return measurements
+
+    def _kv_fallback_parse(self, text: str) -> Dict[str, float]:
+        """
+        Simple robust fallback parser that extracts key:value or key: value pairs from free text.
+
+        It handles names with underscores, spaces, hyphens, and common suffixes (mean, se, worst).
+        This is intended as a heuristic fallback when the AI agent isn't available or the
+        rule-based extractor misses formatted lists like "radius_mean: 18.34, texture_mean: 16.48".
+        """
+        if not text:
+            return {}
+
+        measurements: Dict[str, float] = {}
+
+        # Match patterns like 'radius_mean: 18.34', 'concave points_mean:0.1015', 'area_mean=1184'
+        # Capture the name and the number (allowing integers, floats, optional sign)
+        pattern = re.compile(r"([a-zA-Z][a-zA-Z0-9_\-\s]*?(?:_mean|_se|_worst|mean|se|worst)?)\s*[:=]\s*([-+]?\d*\.?\d+)", re.IGNORECASE)
+
+        for match in pattern.finditer(text):
+            raw_name = match.group(1)
+            raw_value = match.group(2)
+            # normalize name: strip, lower, replace spaces and hyphens with underscore
+            name = re.sub(r"[\s\-]+", "_", raw_name.strip().lower())
+            # remove any characters that are not alnum or underscore
+            name = re.sub(r"[^a-z0-9_]+", "", name)
+            try:
+                value = float(raw_value)
+            except ValueError:
+                continue
+            if name:
+                measurements[name] = value
+
         return measurements
     
     def _parse_characteristics(self, result: str) -> List[str]:
@@ -266,25 +306,39 @@ class BreastCancerFeatureExtractionTool(BaseTool):
         characteristics = []
         text_lower = text.lower()
         
-        # Extract measurements using patterns
+        # Extract measurements using patterns that handle underscore notation
         measurement_patterns = {
-            'radius': r'radius[:\s]*(\d+\.?\d*)',
-            'perimeter': r'perimeter[:\s]*(\d+\.?\d*)',
-            'area': r'area[:\s]*(\d+\.?\d*)',
-            'smoothness': r'smoothness[:\s]*(\d+\.?\d*)',
-            'compactness': r'compactness[:\s]*(\d+\.?\d*)',
-            'concavity': r'concavity[:\s]*(\d+\.?\d*)',
-            'symmetry': r'symmetry[:\s]*(\d+\.?\d*)',
-            'fractal': r'fractal[:\s]*(\d+\.?\d*)',
-            'diameter': r'diameter[:\s]*(\d+\.?\d*)',
-            'size': r'size[:\s]*(\d+\.?\d*)'
+            'radius': r'radius(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'texture': r'texture(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'perimeter': r'perimeter(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'area': r'area(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'smoothness': r'smoothness(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'compactness': r'compactness(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'concavity': r'concavity(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'concave_points': r'concave\s*points(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'symmetry': r'symmetry(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'fractal_dimension': r'fractal(?:\s*dimension)?(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'diameter': r'diameter(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
+            'size': r'size(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)'
         }
         
         for measurement, pattern in measurement_patterns.items():
-            match = re.search(pattern, text_lower)
-            if match:
+            # Find all matches for this measurement type (mean, se, worst)
+            matches = re.finditer(pattern, text_lower)
+            for match in matches:
                 try:
-                    measurements[measurement] = float(match.group(1))
+                    value = float(match.group(1))
+                    # Determine the suffix from the full match
+                    full_match = match.group(0)
+                    if '_mean' in full_match:
+                        key = f"{measurement}_mean"
+                    elif '_se' in full_match:
+                        key = f"{measurement}_se"
+                    elif '_worst' in full_match:
+                        key = f"{measurement}_worst"
+                    else:
+                        key = measurement
+                    measurements[key] = value
                 except ValueError:
                     continue
         
