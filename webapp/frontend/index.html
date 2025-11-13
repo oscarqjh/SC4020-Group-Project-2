@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medical Analysis AI Portal</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Medical Analysis AI Portal</h1>
+      <p class="subtitle">Interactive interface for the CrewAI medical analysis system</p>
+    </header>
+
+    <main>
+      <div class="tab-bar">
+        <button class="tab-button active" data-target="chat-tab">Chat Console</button>
+        <button class="tab-button" data-target="forms-tab">Guided Forms</button>
+      </div>
+
+      <section id="chat-tab" class="tab-content active">
+        <article class="instructions">
+          <h2>System Instructions</h2>
+          <pre id="instructions-text"></pre>
+        </article>
+
+        <article class="chat-panel">
+          <div id="chat-history" class="chat-history"></div>
+          <form id="chat-form">
+            <input
+              type="text"
+              id="chat-input"
+              placeholder="Enter your medical query..."
+              autocomplete="off"
+              required
+            />
+            <button type="submit">Send</button>
+          </form>
+        </article>
+      </section>
+
+      <section id="forms-tab" class="tab-content">
+        <article class="card">
+          <h2>Symptom Checklist</h2>
+          <p class="helper">
+            Select the symptoms you experience. The AI can follow up if it needs more for accuracy.
+          </p>
+          <div id="symptom-grid" class="symptom-grid"></div>
+          <div class="actions">
+            <button id="reset-symptoms" class="secondary">Reset</button>
+            <button id="run-symptom-analysis">Analyze Symptoms</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Breast Cancer Measurements</h2>
+          <p class="helper">
+            Provide the measurements you know. Leave blank fields empty—the model will work
+            with the provided values.
+          </p>
+          <form id="breast-form" class="grid-form">
+            <label>
+              Radius
+              <input type="number" step="0.01" name="radius" />
+            </label>
+            <label>
+              Texture
+              <input type="number" step="0.01" name="texture" />
+            </label>
+            <label>
+              Perimeter
+              <input type="number" step="0.01" name="perimeter" />
+            </label>
+            <label>
+              Area
+              <input type="number" step="0.01" name="area" />
+            </label>
+            <label>
+              Area (mean)
+              <input type="number" step="0.01" name="area_mean" />
+            </label>
+            <label>
+              Area (SE)
+              <input type="number" step="0.01" name="area_se" />
+            </label>
+            <label>
+              Smoothness
+              <input type="number" step="0.001" name="smoothness" />
+            </label>
+            <label>
+              Compactness
+              <input type="number" step="0.001" name="compactness" />
+            </label>
+            <label>
+              Concavity
+              <input type="number" step="0.001" name="concavity" />
+            </label>
+            <label>
+              Symmetry
+              <input type="number" step="0.001" name="symmetry" />
+            </label>
+            <label>
+              Fractal Dimension
+              <input type="number" step="0.001" name="fractal_dimension" />
+            </label>
+            <label>
+              Concave Points (mean)
+              <input type="number" step="0.001" name="concave_points_mean" />
+            </label>
+            <label>
+              Concave Points (SE)
+              <input type="number" step="0.001" name="concave_points_se" />
+            </label>
+            <div class="actions span-2">
+              <button type="reset" class="secondary">Clear</button>
+              <button type="submit">Analyze Measurements</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Latest Analysis Result</h2>
+          <div id="forms-output" class="forms-output"></div>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      <small>For informational purposes only. Always consult a medical professional for diagnosis or treatment.</small>
+    </footer>
+
+    <script src="/assets/symptoms.js"></script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
