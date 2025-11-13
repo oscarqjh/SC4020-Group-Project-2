@@ -153,6 +153,238 @@ python app.py --help
 
 > **Note**: The breast cancer analysis tool utilizes Random Forest machine learning models. For detailed information about model training, parameters, and performance metrics, see [`docs/random_forest_training.md`](docs/random_forest_training.md).
 
+## Random Forest Binary Classifier
+
+The `RandomForestBinaryClassifier` provides a fully-tuned ensemble model for breast cancer diagnosis with automated GridSearchCV optimization.
+
+### Key Features
+
+- **Robust Ensemble**: Random Forest with configurable tree depth, estimators, and split criteria
+- **Hyperparameter Tuning**: Automated GridSearchCV across `n_estimators`, `max_depth`, and `min_samples_split`
+- **Class Imbalance Handling**: Defaults to `class_weight='balanced'`
+- **Comprehensive Evaluation**: F1 (primary), Recall, Precision, ROC-AUC, confusion matrix, and classification report
+- **Feature Importance**: Ranks diagnostic features using mean decrease impurity
+- **Model Persistence**: Timestamped pickle files with full metadata
+
+### Usage Example
+
+```python
+from src.classifiers import RandomForestBinaryClassifier, load_cancer_data, FeatureSelector
+
+X, y = load_cancer_data('data/raw/wisconsin_breast_cancer.csv')
+
+selector = FeatureSelector({
+    'feature_importance_path': 'outputs/feature_importance.txt',
+    'top_n': 12
+})
+X_selected = selector.fit_transform(X, y)
+
+classifier = RandomForestBinaryClassifier({
+    'n_estimators': [100, 200],
+    'max_depth': [10, 20, None],
+    'min_samples_split': [2, 5],
+    'cv_folds': 5,
+    'random_state': 42
+})
+
+classifier.fit(X_selected, y)
+classifier.print_summary()
+print(classifier.get_best_params())
+
+importance = classifier.get_feature_importance()
+print(importance.head())
+
+model_path = classifier.save_model()
+loaded_classifier = RandomForestBinaryClassifier.load_model(model_path)
+predictions = loaded_classifier.predict(X_selected)
+```
+
+### Configuration Parameters
+
+- `n_estimators`: List of tree counts (default `[100, 200, 300]`)
+- `max_depth`: List of tree depths (default `[10, 20, None]`)
+- `min_samples_split`: List for minimum split counts (default `[2, 5, 10]`)
+- `class_weight`: Imbalance strategy (default `'balanced'`)
+- `cv_folds`: Cross-validation folds (default `5`)
+- `test_size`: Held-out proportion (default `0.2`)
+- `scoring`: GridSearchCV metric (default `'f1'`)
+- `random_state`: Seed for reproducibility (default `42`)
+- `n_jobs`: Parallel workers (default `-1`)
+
+### Feature Importance
+
+- Extract via `get_feature_importance()` returning a sorted DataFrame
+- Higher scores indicate greater influence in malignant/benign discrimination
+- Combine with Task 2 results for richer interpretability
+
+### Model Persistence
+
+- Models saved under `scripts/random_forest_model_YYYYMMDD_HHMMSS.pkl`
+- Compatible with `RandomForestBinaryClassifier.load_model(path)`
+- Include call to `.save_model('custom/path.pkl')` for custom locations
+
+### SVM Binary Classifier
+
+The `SVMBinaryClassifier` implements a Support Vector Machine with automatic feature scaling and hyperparameter tuning for breast cancer diagnosis.
+
+**Key Features:**
+
+- **Automatic Feature Scaling**: StandardScaler normalization ensures equitable feature contribution
+- **Hyperparameter Tuning**: GridSearchCV over `C`, `kernel`, and `gamma`
+- **Class Imbalance Handling**: Uses `class_weight='balanced'` by default
+- **Comprehensive Evaluation**: F1 (primary), Recall, Precision, ROC-AUC with train/test metrics
+- **Baseline Comparison**: Optional side-by-side metrics against Random Forest via `--compare-rf`
+- **Support Vector Analysis**: Provides total support vectors and per-class counts
+- **Feature Importance**: Available when the optimal kernel is linear
+- **Model Persistence**: Timestamped pickle files containing both SVC model and scaler
+
+**Usage Example:**
+
+```python
+from src.classifiers import SVMBinaryClassifier, load_cancer_data, FeatureSelector
+
+# Load dataset
+X, y = load_cancer_data('data/raw/wisconsin_breast_cancer.csv')
+
+# Optional feature selection
+selector = FeatureSelector({
+    'feature_importance_path': 'outputs/feature_importance.txt',
+    'top_n': 10
+})
+X_selected = selector.fit_transform(X, y)
+
+classifier = SVMBinaryClassifier({
+    'C': [0.1, 1, 10],
+    'kernel': ['rbf', 'linear'],
+    'gamma': ['scale', 'auto'],
+    'cv_folds': 5,
+    'random_state': 42
+})
+
+classifier.fit(X_selected, y)
+classifier.print_summary()
+
+print(classifier.get_best_params())
+print(classifier.get_support_vectors())
+
+importance = classifier.get_feature_importance()
+if importance is not None:
+    print(importance.head(10))
+
+saved_path = classifier.save_model()
+loaded_classifier = SVMBinaryClassifier.load_model(saved_path)
+
+predictions = loaded_classifier.predict(X_selected)
+```
+
+**Configuration Parameters:**
+
+- `C`: Regularization values (default `[0.1, 1, 10]`)
+- `kernel`: Kernel options (default `['rbf', 'linear']`)
+- `gamma`: Kernel coefficients (default `['scale', 'auto']`)
+- `class_weight`: Imbalance strategy (default `'balanced'`)
+- `probability`: Enable probability estimates (default `True`)
+- `cv_folds`: Cross-validation folds (default `5`)
+- `test_size`: Held-out proportion (default `0.2`)
+- `scoring`: GridSearchCV metric (default `'f1'`)
+- `random_state`: Seed for reproducibility (default `42`)
+- `n_jobs`: Parallel workers for GridSearchCV (default `-1`)
+
+**Feature Scaling:**
+
+- SVM uses StandardScaler internally; features are centered to mean 0 and variance 1
+- The fitted scaler is persisted with the model for consistent preprocessing
+- Predictions automatically apply the stored scaler, preventing data leakage
+
+**Support Vectors:**
+
+- Critical samples lying on or inside the margin boundaries
+- Typically 10–30% of the training data depending on kernel choice
+- Investigate via `get_support_vectors()` to understand boundary complexity
+
+**Feature Importance:**
+
+- Available only for linear kernel via coefficient magnitudes
+- Returns `None` for non-linear kernels; combine with Task 2 insights if needed
+
+**Model Persistence:**
+
+- Saved under `scripts/svm_model_YYYYMMDD_HHMMSS.pkl` by default
+- Includes both the SVC estimator and fitted StandardScaler
+- Use `save_model('custom_filename.pkl')` to specify alternate paths
+
+## Training Pipeline
+
+```bash
+# Random Forest training with default parameters
+python scripts/train_random_forest.py
+
+# Random Forest with feature selection and verbose logging
+python scripts/train_random_forest.py \
+    --use-feature-selection \
+    --top-n-features 10 \
+    --verbose
+
+# Random Forest advanced tuning
+python scripts/train_random_forest.py \
+    --use-feature-selection \
+    --n-estimators 100 200 300 \
+    --max-depth 10 20 None \
+    --min-samples-split 2 5 \
+    --cv-folds 10 \
+    --verbose
+```
+
+### SVM Classifier Training
+
+```bash
+# Basic training with default parameters
+python scripts/train_svm.py
+
+# Training with feature selection (recommended)
+python scripts/train_svm.py \
+    --use-feature-selection \
+    --top-n-features 10 \
+    --verbose
+
+# Advanced training with custom hyperparameters
+python scripts/train_svm.py \
+    --use-feature-selection \
+    --C 0.1 1 10 100 \
+    --kernel rbf linear \
+    --gamma scale auto 0.01 \
+    --cv-folds 10 \
+    --verbose
+
+# Training with Random Forest comparison
+python scripts/train_svm.py \
+    --use-feature-selection \
+    --top-n-features 10 \
+    --compare-rf
+```
+
+`--compare-rf` fits a lightweight Random Forest on the identical train/test split and prints a compact table comparing F1, Recall, Precision, and ROC-AUC for both models.
+
+**Key Differences from Random Forest:**
+
+- **Feature Scaling**: SVM automatically applies StandardScaler; Random Forest is scale-invariant
+- **Hyperparameters**: SVM tunes `C`, `kernel`, `gamma`; Random Forest tunes tree-related parameters
+- **Training Time**: SVM can be slower on larger datasets due to quadratic complexity
+- **Feature Importance**: Linear SVM offers coefficient-based importance; Random Forest provides it for all runs
+- **Support Vectors**: Unique to SVM, offering insight into margin-critical samples
+
+**When to Use SVM:**
+
+- High-dimensional data with potential non-linear boundaries
+- Need for memory-efficient models focused on critical samples
+- Requirement for flexible kernel-based decision boundaries
+
+**When to Use Random Forest:**
+
+- Large datasets or when training speed matters
+- Need for always-available feature importance
+- Preference for models less sensitive to hyperparameter selection
+
 ## Academic Context
 
 This project is developed for **NTU SC4020 Data Analytics & Mining** coursework, emphasizing:
@@ -169,5 +401,6 @@ For detailed implementation guides, API references, and troubleshooting, see the
 - Task 1: Symptom Analysis (`docs/symptom_analysis.md`)
 - Task 2: Cancer Pattern Mining (`docs/cancer_pattern_mining.md`)
 - Task 3: Random Forest Training (`docs/random_forest_training.md`)
+- Task 3: SVM Training (`docs/svm_training.md`)
 - Processors API (`docs/processors.md`)
 - Analysis API (`docs/analysis.md`)
