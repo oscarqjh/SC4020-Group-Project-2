@@ -147,6 +147,9 @@ python app.py --help
 - **Breast Cancer Feature Analysis**: Intelligent tumor measurement and characteristic extraction using Random Forest models
 - **Dynamic Medical Analysis**: Adapts to medical terminology variations
 - **Professional Medical Disclaimers**: Comprehensive safety recommendations
+- **Symptom Follow-up Suggestions**: When fewer than five symptoms are detected, the system now proposes additional high-support symptom combinations (mined from `outputs/task3_tool1/disease_frequent_itemsets.pkl`) to guide the user until the classifier reaches its optimal context window.
+
+> **Model coverage note**: The disease classifier was trained on records with 3–17 symptoms and reaches stable confidence once at least **5** symptoms are confirmed (≈75% of the dataset). Providing fewer symptoms will trigger follow-up questions so the agent can refine the prediction safely.
 
 > **Note**: The breast cancer analysis tool utilizes Random Forest machine learning models. For detailed information about model training, parameters, and performance metrics, see [`docs/random_forest_training.md`](docs/random_forest_training.md).
 

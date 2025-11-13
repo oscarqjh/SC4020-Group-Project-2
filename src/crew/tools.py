@@ -15,10 +15,13 @@ from pydantic import BaseModel, Field
 from crewai.tools.base_tool import BaseTool
 from crewai import LLM
 from os import getenv
+from processors.symptom_data_processor import SymptomDataProcessor
 
 from .base import AnalysisResult, AnalysisType
 from .symptom_extractor import create_symptom_extractor, SymptomExtractionTool
 from .breast_cancer_extractor import create_breast_cancer_feature_extractor, BreastCancerFeatureExtractionTool
+from .disease_model import DiseasePredictionModel
+from .symptom_suggester import SymptomSuggester
 
 
 class DiseaseAnalysisInput(BaseModel):
@@ -43,14 +46,25 @@ class DiseaseAnalysisTool(BaseTool):
     
     # Additional attributes for the tool
     symptom_patterns: list = []
+    MIN_SYMPTOMS_FOR_CONFIDENCE: int = 5
     
     def __init__(self):
         super().__init__()
         self._symptom_extractor = self._initialize_symptom_extractor()
         self._symptom_categories = self._load_symptom_categories()
         self.symptom_patterns = self._compile_symptom_patterns(self._symptom_categories)
+        self._symptom_processor = SymptomDataProcessor(data_path="")
         self._precaution_mapping = self._load_precaution_mapping()
         self._llm = self._initialize_llm()
+        self._disease_model = DiseasePredictionModel()
+        self._symptom_suggester = SymptomSuggester()
+        self._pending_symptoms: list[str] = []
+        self._awaiting_additional_input: bool = False
+        self._last_prediction_context: Dict[str, Any] = {
+            "predictions": [],
+            "recognized_symptoms": [],
+            "reason": "not_initialized"
+        }
     
     @property
     def symptom_extractor(self):
@@ -102,7 +116,33 @@ class DiseaseAnalysisTool(BaseTool):
         detected_symptoms = self._extract_symptoms(input_data)
         normalized_symptoms = self._normalize_symptoms(detected_symptoms)
         
+        if self._awaiting_additional_input:
+            normalized_symptoms = self._merge_with_pending_symptoms(normalized_symptoms)
+        
+        symptom_count = len(normalized_symptoms)
+        awaiting_followup = self._awaiting_additional_input
+        needs_more_symptoms = symptom_count < self.MIN_SYMPTOMS_FOR_CONFIDENCE and not awaiting_followup
+        followup_suggestions = self._get_followup_suggestions(
+            normalized_symptoms,
+            limit=max(3, self.MIN_SYMPTOMS_FOR_CONFIDENCE - symptom_count + 2),
+        ) if needs_more_symptoms else []
+        
+        if needs_more_symptoms:
+            self._store_pending_symptoms(normalized_symptoms)
+            return self._build_insufficient_symptom_result(
+                normalized_symptoms=normalized_symptoms,
+                followup_suggestions=followup_suggestions,
+                symptom_count=symptom_count,
+                input_text=input_data,
+            )
+        
+        if awaiting_followup:
+            self._clear_pending_symptoms()
+        else:
+            self._reset_pending_state()
+        
         disease_predictions = self._predict_disease(normalized_symptoms)
+        prediction_context = getattr(self, "_last_prediction_context", {})
         top_prediction = disease_predictions[0] if disease_predictions else None
         top_precautions = self._get_precautions(top_prediction["disease"]) if top_prediction else []
         
@@ -116,6 +156,9 @@ class DiseaseAnalysisTool(BaseTool):
         
         # Calculate confidence based on prediction probability (fallback to minimum confidence)
         confidence = top_prediction["probability"] if top_prediction else 0.3
+        model_ready = bool(getattr(self, "_disease_model", None) and self._disease_model.is_ready)
+        processing_method = "trained_classifier_inference" if model_ready else "pattern_matching_with_placeholder_prediction"
+        prediction_model_name = "rf_symptom_classifier_v1" if model_ready else "placeholder_predict_disease_v1"
         
         return AnalysisResult(
             analysis_type=AnalysisType.DISEASE_SYMPTOMS,
@@ -124,16 +167,24 @@ class DiseaseAnalysisTool(BaseTool):
             recommendations=diagnosis_suggestions,
             raw_data={
                 "detected_symptoms": normalized_symptoms,
-                "symptom_count": len(normalized_symptoms),
+                "symptom_count": symptom_count,
                 "disease_predictions": disease_predictions,
                 "top_disease_precautions": top_precautions,
-                "input_text": input_data
+                "input_text": input_data,
+                "model_recognized_symptoms": prediction_context.get("recognized_symptoms", []),
+                "model_reason": prediction_context.get("reason"),
+                "model_available": model_ready,
+                "model_metrics": getattr(self._disease_model, "metrics", {}) if model_ready else {},
+                "needs_more_symptoms": needs_more_symptoms,
+                "symptom_threshold": self.MIN_SYMPTOMS_FOR_CONFIDENCE,
+                "followup_suggestions": followup_suggestions,
             },
             metadata={
                 "tool_name": self.name,
                 "analysis_timestamp": "placeholder_timestamp",
-                "processing_method": "pattern_matching_with_placeholder_prediction",
-                "prediction_model": "placeholder_predict_disease_v1"
+                "processing_method": processing_method,
+                "prediction_model": prediction_model_name,
+                "min_symptom_threshold": self.MIN_SYMPTOMS_FOR_CONFIDENCE,
             }
         )
     
@@ -257,21 +308,155 @@ class DiseaseAnalysisTool(BaseTool):
     def _normalize_symptoms(self, symptoms: List[str]) -> List[str]:
         normalized = []
         seen = set()
+        processor = getattr(self, "_symptom_processor", None)
         for symptom in symptoms:
-            cleaned = re.sub(r'[^a-zA-Z\s]', '', symptom or '')
-            cleaned = re.sub(r'\s+', ' ', cleaned).strip().lower()
+            if not symptom:
+                continue
+            try:
+                cleaned = processor.normalize_symptom(symptom) if processor else symptom
+            except Exception:
+                cleaned = symptom
+            cleaned = cleaned.lower().strip()
+            cleaned = cleaned.replace('-', ' ')
+            cleaned = re.sub(r'[^a-z0-9\s]', ' ', cleaned)
+            cleaned = re.sub(r'\s+', '_', cleaned).strip('_')
             if cleaned and cleaned not in seen:
                 normalized.append(cleaned)
                 seen.add(cleaned)
         return normalized
     
+    def _get_followup_suggestions(self, symptoms: List[str], limit: int = 5) -> List[dict]:
+        """Suggest additional symptoms using frequent itemsets."""
+        suggester = getattr(self, "_symptom_suggester", None)
+        if not suggester or not symptoms:
+            return []
+        
+        suggestions = suggester.suggest(symptoms, limit=limit)
+        formatted = []
+        for suggestion in suggestions:
+            formatted.append(
+                {
+                    "symptom": suggestion.symptom,
+                    "display_name": suggestion.display_name,
+                    "support": suggestion.support,
+                    "disease": suggestion.disease,
+                    "trigger_symptoms": suggestion.trigger_symptoms,
+                }
+            )
+        return formatted
+    
+    def _merge_with_pending_symptoms(self, new_symptoms: List[str]) -> List[str]:
+        """Merge newly detected symptoms with cached ones, preserving order."""
+        combined: list[str] = []
+        seen = set()
+        for symptom in list(self._pending_symptoms) + list(new_symptoms):
+            if symptom and symptom not in seen:
+                combined.append(symptom)
+                seen.add(symptom)
+        return combined
+    
+    def _store_pending_symptoms(self, symptoms: List[str]) -> None:
+        """Store symptoms while waiting for user follow-up."""
+        self._pending_symptoms = list(symptoms)
+        self._awaiting_additional_input = True
+    
+    def _clear_pending_symptoms(self) -> None:
+        """Clear pending symptoms after follow-up is processed."""
+        self._pending_symptoms = []
+        self._awaiting_additional_input = False
+    
+    def _reset_pending_state(self) -> None:
+        """Ensure pending state is cleared when not awaiting follow-up."""
+        if not self._awaiting_additional_input:
+            self._pending_symptoms = []
+    
+    def _build_insufficient_symptom_result(
+        self,
+        *,
+        normalized_symptoms: List[str],
+        followup_suggestions: List[dict],
+        symptom_count: int,
+        input_text: str,
+    ) -> AnalysisResult:
+        """Create an analysis result that prioritizes gathering more symptoms."""
+        self._last_prediction_context = {
+            "predictions": [],
+            "recognized_symptoms": normalized_symptoms,
+            "reason": "needs_more_symptoms",
+        }
+        recommendations = [
+            "Please review the follow-up symptoms listed below and let me know which ones you also experience.",
+            "You can also describe any other sensations (duration, severity, or related issues) to enrich the analysis."
+        ]
+        
+        return AnalysisResult(
+            analysis_type=AnalysisType.DISEASE_SYMPTOMS,
+            confidence=0.0,
+            primary_findings=self._format_primary_findings(normalized_symptoms, None),
+            recommendations=recommendations,
+            raw_data={
+                "detected_symptoms": normalized_symptoms,
+                "symptom_count": symptom_count,
+                "disease_predictions": [],
+                "top_disease_precautions": [],
+                "input_text": input_text,
+                "model_recognized_symptoms": [],
+                "model_reason": "not_enough_symptoms",
+                "model_available": bool(self._disease_model and self._disease_model.is_ready),
+                "model_metrics": getattr(self._disease_model, "metrics", {}) if self._disease_model and self._disease_model.is_ready else {},
+                "needs_more_symptoms": True,
+                "symptom_threshold": self.MIN_SYMPTOMS_FOR_CONFIDENCE,
+                "followup_suggestions": followup_suggestions,
+                "pending_symptoms": list(self._pending_symptoms),
+            },
+            metadata={
+                "tool_name": self.name,
+                "analysis_timestamp": "placeholder_timestamp",
+                "processing_method": "symptom_collection_phase",
+                "prediction_model": "not_run_insufficient_symptoms",
+                "min_symptom_threshold": self.MIN_SYMPTOMS_FOR_CONFIDENCE,
+            }
+        )
+    
     def _predict_disease(self, symptoms: List[str]) -> List[dict]:
         """
-        Placeholder disease prediction that returns top five disease hypotheses with probabilities.
+        Predict diseases using the trained model with a graceful fallback.
+        """
+        self._last_prediction_context = {
+            "predictions": [],
+            "recognized_symptoms": [],
+            "reason": "not_evaluated"
+        }
+
+        if not symptoms:
+            return []
+
+        model = getattr(self, "_disease_model", None)
+        if model and model.is_ready:
+            result = model.predict(symptoms, top_k=5)
+            self._last_prediction_context = {
+                "predictions": result.predictions,
+                "recognized_symptoms": result.recognized_symptoms,
+                "reason": result.reason,
+            }
+            if result.predictions:
+                return result.predictions
+
+        placeholder = self._generate_placeholder_predictions(symptoms)
+        self._last_prediction_context = {
+            "predictions": placeholder,
+            "recognized_symptoms": symptoms,
+            "reason": "placeholder_fallback"
+        }
+        return placeholder
+
+    def _generate_placeholder_predictions(self, symptoms: List[str]) -> List[dict]:
+        """
+        Deterministic placeholder predictions used when the trained model is unavailable.
         """
         if not symptoms:
             return []
-        
+
         candidate_diseases = [
             "Common Cold",
             "Influenza",
@@ -283,14 +468,14 @@ class DiseaseAnalysisTool(BaseTool):
             "Pneumonia",
             "Heart attack",
         ]
-        
+
         randomizer = random.Random("|".join(symptoms))
         randomizer.shuffle(candidate_diseases)
         selected = candidate_diseases[:5]
-        
+
         raw_scores = [randomizer.uniform(0.2, 1.0) for _ in selected]
         score_sum = sum(raw_scores) or 1.0
-        
+
         predictions = []
         for disease, score in zip(selected, raw_scores):
             predictions.append(
@@ -299,7 +484,7 @@ class DiseaseAnalysisTool(BaseTool):
                     "probability": round(score / score_sum, 4),
                 }
             )
-        
+
         predictions.sort(key=lambda item: item["probability"], reverse=True)
         return predictions
     

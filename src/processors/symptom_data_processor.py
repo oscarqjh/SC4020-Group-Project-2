@@ -24,11 +24,16 @@ class SymptomDataProcessor:
             'belly pain': 'abdominal pain',
             'stomach pain': 'abdominal pain',
             'swelling of stomach': 'distention of abdomen',
+            'stomach ache': 'stomach pain',
+            'tummy ache': 'stomach pain',
 
             # --- Pain & Discomfort ---
             'burning micturition': 'painful urination',
             'irritation in anus': 'anal discomfort',
             'pain in anal region': 'anal discomfort',
+            'body ache': 'muscle pain',
+            'body pain': 'muscle pain',
+            'body aches': 'muscle pain',
             # 'hip joint pain': 'joint pain',
             # 'knee pain': 'joint pain',
 
@@ -42,6 +47,8 @@ class SymptomDataProcessor:
             'chill': 'chills',
             'vomit': 'vomiting',
             'nausea': 'vomiting',
+            'fever': 'high fever',
+            'pyrexia': 'high fever',
 
             # --- Skin ---
             'itch': 'itching',
@@ -54,6 +61,24 @@ class SymptomDataProcessor:
             # --- Other Groups ---
             'excessive hunger': 'increased appetite',
             'weakness in limbs': 'muscle weakness',
+            'running nose': 'runny nose',
+            'runny nose': 'runny nose',
+            'runny noses': 'runny nose',
+            'runny_nose': 'runny nose',
+            'yellow urine': 'yellow urine',
+            'yellow pee': 'yellow urine',
+            'yellow pee.': 'yellow urine',
+            'yellow pee?': 'yellow urine',
+            'yellow pee!': 'yellow urine',
+            'yellow pee ': 'yellow urine',
+            'yellow peeing': 'yellow urine',
+            'loose motion': 'diarrhoea',
+            'loose motions': 'diarrhoea',
+            'loose stool': 'diarrhoea',
+            'loose stools': 'diarrhoea',
+            'loose stooling': 'diarrhoea',
+            'sore throat': 'throat irritation',
+            'throat pain': 'throat irritation',
 
             # --- Spelling/Typo Corrections ---
             'cold hands and feets': 'cold hands and feet',
@@ -189,4 +214,3 @@ class SymptomDataProcessor:
         
         self.transactions = transactions
         return self.transactions
-
