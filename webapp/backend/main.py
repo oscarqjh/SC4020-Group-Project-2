@@ -167,8 +167,10 @@ def run_breast_cancer_analysis(payload: BreastCancerRequest) -> ChatResponse:
 
     parts = [f"{k.replace('_', ' ')} {v}" for k, v in payload.measurements.items()]
     prompt = (
-        "Breast cancer analysis request. "
-        "Patient measurements: " + "; ".join(parts)
+        "A breast cancer study was performed on a patient. "
+        "Doctors scanned the sizes of the cancer cell nuclei and performed a detailed analysis on the tumor. "
+        "Here are the report details and measurements: " + "; ".join(parts) + ". "
+        "Analyze these tumor characteristics and measurements to provide a comprehensive breast cancer assessment."
     )
     response = session.run(prompt)
     return ChatResponse(response=response)

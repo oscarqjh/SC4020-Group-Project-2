@@ -253,17 +253,18 @@ class BreastCancerFeatureExtractionTool(BaseTool):
         It handles names with underscores, spaces, hyphens, and common suffixes (mean, se, worst).
         This is intended as a heuristic fallback when the AI agent isn't available or the
         rule-based extractor misses formatted lists like "radius_mean: 18.34, texture_mean: 16.48".
+        Also handles space-separated formats like "radius mean 16.72" from webapp backend.
         """
         if not text:
             return {}
 
         measurements: Dict[str, float] = {}
 
-        # Match patterns like 'radius_mean: 18.34', 'concave points_mean:0.1015', 'area_mean=1184'
+        # Match patterns with colon/equals separators like 'radius_mean: 18.34', 'concave points_mean:0.1015', 'area_mean=1184'
         # Capture the name and the number (allowing integers, floats, optional sign)
-        pattern = re.compile(r"([a-zA-Z][a-zA-Z0-9_\-\s]*?(?:_mean|_se|_worst|mean|se|worst)?)\s*[:=]\s*([-+]?\d*\.?\d+)", re.IGNORECASE)
+        pattern_with_separator = re.compile(r"([a-zA-Z][a-zA-Z0-9_\-\s]*?(?:_mean|_se|_worst|mean|se|worst)?)\s*[:=]\s*([-+]?\d*\.?\d+)", re.IGNORECASE)
 
-        for match in pattern.finditer(text):
+        for match in pattern_with_separator.finditer(text):
             raw_name = match.group(1)
             raw_value = match.group(2)
             # normalize name: strip, lower, replace spaces and hyphens with underscore
@@ -275,6 +276,61 @@ class BreastCancerFeatureExtractionTool(BaseTool):
             except ValueError:
                 continue
             if name:
+                measurements[name] = value
+
+        # Match space-separated patterns like 'radius mean 16.72', 'texture mean 20.05', 'radius_mean 16.72'
+        # Pattern matches: word(s) + suffix (mean/se/worst) + whitespace + number
+        # This handles webapp backend format: "radius mean 16.72" where underscore was replaced with space
+        # Also handles patterns like "radius 16.72" (no suffix) or "radius_mean 16.72" (with underscore)
+        pattern_space_separated = re.compile(
+            r"\b([a-zA-Z][a-zA-Z0-9_\-\s]*?)\s+(mean|se|worst)\s+([-+]?\d+\.?\d+)|"  # word + suffix + number
+            r"\b([a-zA-Z][a-zA-Z0-9_]*?_(?:mean|se|worst))\s+([-+]?\d+\.?\d+)|"  # word_mean + number
+            r"\b([a-zA-Z][a-zA-Z0-9_]+)\s+([-+]?\d+\.?\d+)(?=\s|;|,|\.|$)",  # word + number (fallback)
+            re.IGNORECASE
+        )
+
+        for match in pattern_space_separated.finditer(text):
+            raw_name = None
+            raw_value = None
+            
+            # Check if match has suffix separated by space (first alternative: "radius mean 16.72")
+            try:
+                if match.group(1) and match.group(2) and match.group(3):
+                    raw_name = match.group(1).strip() + " " + match.group(2).strip()
+                    raw_value = match.group(3)
+            except IndexError:
+                pass
+            
+            # Check if match has underscore suffix (second alternative: "radius_mean 16.72")
+            if raw_name is None:
+                try:
+                    if match.group(4) and match.group(5):
+                        raw_name = match.group(4).strip()
+                        raw_value = match.group(5)
+                except IndexError:
+                    pass
+            
+            # Check if match has no suffix (third alternative: "radius 16.72")
+            if raw_name is None:
+                try:
+                    if match.group(6) and match.group(7):
+                        raw_name = match.group(6).strip()
+                        raw_value = match.group(7)
+                except IndexError:
+                    pass
+            
+            if raw_name is None or raw_value is None:
+                continue
+
+            # normalize name: strip, lower, replace spaces and hyphens with underscore
+            name = re.sub(r"[\s\-]+", "_", raw_name.strip().lower())
+            # remove any characters that are not alnum or underscore
+            name = re.sub(r"[^a-z0-9_]+", "", name)
+            try:
+                value = float(raw_value)
+            except ValueError:
+                continue
+            if name and name not in measurements:  # Avoid overwriting colon-separated matches
                 measurements[name] = value
 
         return measurements
@@ -306,20 +362,22 @@ class BreastCancerFeatureExtractionTool(BaseTool):
         characteristics = []
         text_lower = text.lower()
         
-        # Extract measurements using patterns that handle underscore notation
+        # Extract measurements using patterns that handle underscore notation, colon-separated, and space-separated formats
+        # Patterns handle: "radius_mean: 16.72", "radius mean: 16.72", "radius mean 16.72", "radius_mean 16.72"
+        # Pattern explanation: matches measurement name, optional space/underscore + suffix (mean/se/worst), optional colon/equals, then number
         measurement_patterns = {
-            'radius': r'radius(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'texture': r'texture(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'perimeter': r'perimeter(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'area': r'area(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'smoothness': r'smoothness(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'compactness': r'compactness(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'concavity': r'concavity(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'concave_points': r'concave\s*points(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'symmetry': r'symmetry(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'fractal_dimension': r'fractal(?:\s*dimension)?(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'diameter': r'diameter(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)',
-            'size': r'size(?:_mean|_se|_worst)?[:\s]*(\d+\.?\d*)'
+            'radius': r'radius\s+(mean|se|worst)\s+(\d+\.?\d*)|radius(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'texture': r'texture\s+(mean|se|worst)\s+(\d+\.?\d*)|texture(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'perimeter': r'perimeter\s+(mean|se|worst)\s+(\d+\.?\d*)|perimeter(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'area': r'area\s+(mean|se|worst)\s+(\d+\.?\d*)|area(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'smoothness': r'smoothness\s+(mean|se|worst)\s+(\d+\.?\d*)|smoothness(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'compactness': r'compactness\s+(mean|se|worst)\s+(\d+\.?\d*)|compactness(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'concavity': r'concavity\s+(mean|se|worst)\s+(\d+\.?\d*)|concavity(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'concave_points': r'concave\s*points\s+(mean|se|worst)\s+(\d+\.?\d*)|concave\s*points(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'symmetry': r'symmetry\s+(mean|se|worst)\s+(\d+\.?\d*)|symmetry(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'fractal_dimension': r'fractal(?:\s*dimension)?\s+(mean|se|worst)\s+(\d+\.?\d*)|fractal(?:\s*dimension)?(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'diameter': r'diameter\s+(mean|se|worst)\s+(\d+\.?\d*)|diameter(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)',
+            'size': r'size\s+(mean|se|worst)\s+(\d+\.?\d*)|size(?:_(mean|se|worst))?\s*[:=]?\s*(\d+\.?\d*)'
         }
         
         for measurement, pattern in measurement_patterns.items():
@@ -327,19 +385,41 @@ class BreastCancerFeatureExtractionTool(BaseTool):
             matches = re.finditer(pattern, text_lower)
             for match in matches:
                 try:
-                    value = float(match.group(1))
-                    # Determine the suffix from the full match
-                    full_match = match.group(0)
-                    if '_mean' in full_match:
-                        key = f"{measurement}_mean"
-                    elif '_se' in full_match:
-                        key = f"{measurement}_se"
-                    elif '_worst' in full_match:
-                        key = f"{measurement}_worst"
+                    # Pattern has two alternatives with different group numbers:
+                    # 1. Space-separated: "measurement suffix number" -> groups 1=suffix, 2=number
+                    # 2. Underscore/colon: "measurement_suffix: number" -> groups 3=suffix (optional), 4=number
+                    value = None
+                    suffix = None
+                    
+                    # Check first alternative (space-separated like "radius mean 16.72")
+                    # Groups 1 and 2 will be set if this alternative matches
+                    try:
+                        if match.group(1) and match.group(2):
+                            suffix = match.group(1)
+                            value = float(match.group(2))
+                    except IndexError:
+                        pass
+                    
+                    # Check second alternative (underscore/colon like "radius_mean: 16.72" or "radius_mean 16.72")
+                    # Groups 3 and 4 will be set if this alternative matches (group 3 may be None if no suffix)
+                    if value is None:
+                        try:
+                            if match.group(4):  # number is always present in second alternative
+                                suffix = match.group(3) if match.group(3) else None
+                                value = float(match.group(4))
+                        except IndexError:
+                            pass
+                    
+                    if value is None:
+                        continue
+                    
+                    # Determine the key based on suffix
+                    if suffix:
+                        key = f"{measurement}_{suffix}"
                     else:
                         key = measurement
                     measurements[key] = value
-                except ValueError:
+                except (ValueError, IndexError):
                     continue
         
         # Extract characteristics using all categories
