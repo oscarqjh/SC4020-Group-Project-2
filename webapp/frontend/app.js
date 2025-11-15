@@ -14,6 +14,38 @@
 
   let sessionId = "";
   const selectedSymptoms = new Set();
+  
+  // Additional measurement fields (excluding the 4 required ones)
+  const ADDITIONAL_MEASUREMENTS = [
+    { name: "radius_mean", label: "Radius (Mean)" },
+    { name: "radius_se", label: "Radius (SE)" },
+    { name: "radius_worst", label: "Radius (Worst)" },
+    { name: "texture_mean", label: "Texture (Mean)" },
+    { name: "texture_se", label: "Texture (SE)" },
+    { name: "texture_worst", label: "Texture (Worst)" },
+    { name: "perimeter_mean", label: "Perimeter (Mean)" },
+    { name: "perimeter_se", label: "Perimeter (SE)" },
+    { name: "perimeter_worst", label: "Perimeter (Worst)" },
+    { name: "area_worst", label: "Area (Worst)" },
+    { name: "smoothness_mean", label: "Smoothness (Mean)" },
+    { name: "smoothness_se", label: "Smoothness (SE)" },
+    { name: "smoothness_worst", label: "Smoothness (Worst)" },
+    { name: "compactness_mean", label: "Compactness (Mean)" },
+    { name: "compactness_se", label: "Compactness (SE)" },
+    { name: "compactness_worst", label: "Compactness (Worst)" },
+    { name: "concavity_mean", label: "Concavity (Mean)" },
+    { name: "concavity_se", label: "Concavity (SE)" },
+    { name: "concavity_worst", label: "Concavity (Worst)" },
+    { name: "concave_points_worst", label: "Concave Points (Worst)" },
+    { name: "symmetry_mean", label: "Symmetry (Mean)" },
+    { name: "symmetry_se", label: "Symmetry (SE)" },
+    { name: "symmetry_worst", label: "Symmetry (Worst)" },
+    { name: "fractal_dimension_mean", label: "Fractal Dimension (Mean)" },
+    { name: "fractal_dimension_se", label: "Fractal Dimension (SE)" },
+    { name: "fractal_dimension_worst", label: "Fractal Dimension (Worst)" },
+  ];
+  
+  const selectedMeasurements = new Set();
 
   // Tab switching
   tabButtons.forEach((btn) => {
@@ -183,8 +215,104 @@
     appendFormsOutput(data.response);
   });
 
+  // Breast cancer measurement dropdown functionality
+  const measurementDropdown = document.getElementById("measurement-dropdown");
+  const measurementSearch = document.getElementById("measurement-search");
+  const additionalFieldsGroup = document.getElementById("additional-fields-group");
+  const additionalFields = document.getElementById("additional-fields");
+
+  function renderMeasurementDropdown(measurementsList = ADDITIONAL_MEASUREMENTS) {
+    measurementDropdown.innerHTML = "";
+    
+    measurementsList.forEach((measurement) => {
+      const item = document.createElement("div");
+      item.className = "measurement-checkbox-item";
+      
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = `checkbox-${measurement.name}`;
+      checkbox.checked = selectedMeasurements.has(measurement.name);
+      checkbox.addEventListener("change", () => toggleMeasurement(measurement));
+      
+      const label = document.createElement("label");
+      label.htmlFor = `checkbox-${measurement.name}`;
+      label.textContent = measurement.label;
+      
+      item.appendChild(checkbox);
+      item.appendChild(label);
+      measurementDropdown.appendChild(item);
+    });
+  }
+
+  function toggleMeasurement(measurement) {
+    const checkbox = document.getElementById(`checkbox-${measurement.name}`);
+    if (checkbox && checkbox.checked) {
+      // Checkbox was checked - add measurement
+      selectedMeasurements.add(measurement.name);
+      addMeasurementField(measurement);
+    } else {
+      // Checkbox was unchecked - remove measurement
+      selectedMeasurements.delete(measurement.name);
+      removeMeasurementField(measurement.name);
+    }
+    updateAdditionalFieldsVisibility();
+  }
+
+  function addMeasurementField(measurement) {
+    // Check if field already exists
+    if (document.querySelector(`input[name="${measurement.name}"]`)) {
+      return;
+    }
+    
+    const label = document.createElement("label");
+    label.innerHTML = `
+      ${measurement.label}
+      <input type="number" step="0.0000001" name="${measurement.name}" />
+    `;
+    additionalFields.appendChild(label);
+  }
+
+  function removeMeasurementField(measurementName) {
+    const input = document.querySelector(`input[name="${measurementName}"]`);
+    if (input && input.closest("label")) {
+      input.closest("label").remove();
+    }
+  }
+
+  function updateAdditionalFieldsVisibility() {
+    if (selectedMeasurements.size > 0) {
+      additionalFieldsGroup.style.display = "block";
+    } else {
+      additionalFieldsGroup.style.display = "none";
+    }
+  }
+
+  // Search functionality for measurements
+  measurementSearch.addEventListener("input", (e) => {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    if (searchTerm === "") {
+      renderMeasurementDropdown(ADDITIONAL_MEASUREMENTS);
+    } else {
+      const filtered = ADDITIONAL_MEASUREMENTS.filter((m) =>
+        m.label.toLowerCase().includes(searchTerm) ||
+        m.name.toLowerCase().includes(searchTerm)
+      );
+      renderMeasurementDropdown(filtered);
+    }
+  });
+
+  // Handle form reset
+  breastForm.addEventListener("reset", () => {
+    selectedMeasurements.clear();
+    additionalFields.innerHTML = "";
+    updateAdditionalFieldsVisibility();
+    measurementSearch.value = "";
+    renderMeasurementDropdown(ADDITIONAL_MEASUREMENTS);
+  });
+
   // Initialise
   renderSymptomGrid();
+  renderMeasurementDropdown();
   createSession().catch(() => {
     appendSystemMessage("Failed to initialise session. Please reload the page.");
   });

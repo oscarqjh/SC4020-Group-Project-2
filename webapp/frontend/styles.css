@@ -130,6 +130,23 @@ button {
   color: #fff;
   cursor: pointer;
   font-weight: 600;
+  /* Normalize button styles across browsers */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  font-size: inherit;
+  box-sizing: border-box;
+}
+
+button:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 button.secondary {
@@ -192,6 +209,53 @@ button.secondary {
   padding: 0.5rem;
   border-radius: 6px;
   border: 1px solid #cbd5f5;
+  /* Normalize across browsers */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Normalize all input fields - base normalization without padding */
+input[type="text"],
+input[type="number"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Specific input field styles */
+#chat-form input,
+.measurement-search {
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+}
+
+/* Remove Chrome's default yellow autofill background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #fff inset;
+  box-shadow: 0 0 0px 1000px #fff inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Focus states for better accessibility and consistency */
+input:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-color: #2563eb;
+}
+
+input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .grid-form .actions {
@@ -202,9 +266,126 @@ button.secondary {
   grid-column: span 2;
 }
 
+.breast-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.field-group {
+  margin-bottom: 1rem;
+}
+
+.field-group-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2933;
+}
+
+.field-selector {
+  margin: 1rem 0;
+}
+
+.selector-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.measurement-search {
+  /* Base styles inherited from general input normalization */
+  font-size: 0.95rem;
+}
+
+.measurement-dropdown {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+
+.measurement-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.measurement-checkbox-item:hover {
+  background: #f1f5f9;
+}
+
+.measurement-checkbox-item input[type="checkbox"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.measurement-checkbox-item label {
+  cursor: pointer;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: normal;
+}
+
 .helper {
   margin: 0;
   color: #475569;
+}
+
+.callout-box {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 1.5rem 0;
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  align-items: flex-start;
+  /* Ensure consistent rendering */
+  box-sizing: border-box;
+}
+
+.callout-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  line-height: 1.2;
+  /* Better cross-browser emoji rendering */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  /* Fallback margin for older Safari if gap doesn't work */
+  margin-right: 1rem;
+}
+
+/* Remove margin if gap is supported */
+@supports (gap: 1rem) {
+  .callout-icon {
+    margin-right: 0;
+  }
+}
+
+.callout-content {
+  flex: 1;
+}
+
+.callout-content .helper {
+  margin: 0;
+  line-height: 1.6;
 }
 
 .warning {
